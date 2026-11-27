@@ -11,9 +11,9 @@ SENDER_PASSWORD = "__SMTP_PASSWORD__"
 RECEIVER_EMAIL = "__SMTP_RECEIVER__"
 
 # IMAP Email Configuration (用于把已发送邮件存入"已发送"文件夹)
-IMAP_SERVER = "imap.sohu.com"
+IMAP_SERVER = "__IMAP_HOST__"
 IMAP_PORT = 993
-IMAP_SENT_FOLDER = "&XfJT0ZABkK5O9g-"  # 搜狐邮箱"已发送"文件夹的实际IMAP名称（UTF-7编码）
+IMAP_SENT_FOLDER = "__IMAP_SENT_FOLDER__"  # 你的邮箱"已发送"文件夹的 IMAP 名（非 ASCII 名用 UTF-7 编码）
 
 
 def save_to_sent(msg):

@@ -51,7 +51,7 @@ nginx access logs (one <site>.log per site) ──┐
 SSH logs (/var/log/secure or auth.log) ───────┼─→ dashboard-init.py ─→ s-<key>.json ─→ index.html (static page)
 fail2ban logs (optional) ─────────────────┘         │                 │
                                                      ├─→ nginx blocklist.conf (autoban; the generator runs nginx -t itself, then reloads)
-                                                     └─→ daily report email (Sohu SMTP, sent with the 07:00 full run)
+                                                     └─→ daily report email (SMTP, sent with the 07:00 full run)
 ```
 
 - `index.html` is a plain static page that reads `s-<key>.json` via `?key=`. With no key or a wrong key it shows demo data; `?key=0` shows the error page.
@@ -80,10 +80,12 @@ Use this table when filling in the templates. Placeholders are grouped by the fi
 | `__RESOLUTIONS_PATH__` | Resolved-incident registry | Required | Actual path (keep it next to the generator) |
 | `__AUTOBAN_STATE_PATH__` | Ban records | Required | Actual path (keep it next to the generator) |
 | `__AUTOBAN_7D_STATE_PATH__` | 7-day ban counts | Required | Same as above |
-| `__SMTP_HOST__` | Mail server host | Required | SMTP server for the daily report email (the template defaults to Sohu SMTP; change it if you use another provider) |
+| `__SMTP_HOST__` | Mail server host | Required | SMTP server for the daily report email (the template defaults to 465; change it if you use another provider) |
 | `__SMTP_SENDER__` | Sender mailbox | Required | Mailbox used to send the daily report email (SMTP account) |
 | `__SMTP_RECEIVER__` | Receiver mailbox | Required | Mailbox that receives the daily report email |
 | `__SMTP_PASSWORD__` | Sender mailbox password | Required | Password of the sender mailbox; do not leak it |
+| `__IMAP_HOST__` | IMAP server host | Optional | Your mail provider's IMAP host; the generator uses it to save the sent report to the Sent folder. Leave it if you don't need that |
+| `__IMAP_SENT_FOLDER__` | Sent folder name | Optional | IMAP name of your Sent folder (e.g. `Sent`; a non-ASCII name needs its UTF-7 encoding). Leave it if you don't need that |
 | `__OWNER_NAME__` | Owner name | Required | Your name; used in the dashboard footer © line, and the generator uses it to recognise your own SSH keys (a key whose comment contains this word maps to the owner). |
 | `__HOST_PUBLIC_IP__` | Host's own public IP | Required | The host's own public IP (a single address); the panel/SSH sometimes log a login from the host itself via its public IP, that is not a stranger |
 | `__EGRESS_NET_1__` | Assistant egress network 1 | Optional | Network (CIDR) the assistant tools connect from; if there are several, fill them in order, `__EGRESS_NET_2__` the same way. Leave both if no assistant tools connect to this host |
@@ -166,7 +168,7 @@ These paths are written directly in the templates, not as placeholders. Change t
 - Panel login database: the generator reads `/www/server/panel/data/db/log.db` (Baota). Without Baota, the code tolerates it being missing and the panel-login panel will be empty.
 - nginx binary: the generator calls `/www/server/nginx/sbin/nginx`. Change `_NGINX_BIN` if nginx lives elsewhere.
 
-The mail server port does not need to change; the template already has Sohu SMTP on port 465. If you switch to a different mail provider, change `SMTP_SERVER` / `SMTP_PORT` / `IMAP_SERVER` in the template.
+The mail server port does not need to change; the template already uses port 465. If you switch to a different mail provider, change `SMTP_SERVER` / `SMTP_PORT` / `IMAP_SERVER` / `IMAP_SENT_FOLDER` in the template.
 
 ### What to change in index.html.template
 

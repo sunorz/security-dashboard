@@ -51,7 +51,7 @@ nginx 访问日志（每站点一个 <site>.log）──┐
 SSH 日志（/var/log/secure 或 auth.log）──┼─→ dashboard-init.py ─→ s-<key>.json ─→ index.html（静态页）
 fail2ban 日志（可选）───────────────┘         │                 │
                                               ├─→ nginx blocklist.conf（autoban，改完自己 nginx -t 再 reload）
-                                              └─→ 日报邮件（Sohu SMTP，07:00 全量时发）
+                                              └─→ 日报邮件（SMTP，07:00 全量时发）
 ```
 
 - `index.html` 是纯静态页，凭 `?key=` 读 `s-<key>.json`。没有 key 或 key 不对时显示演示数据；`?key=0` 显示出错页。
@@ -80,10 +80,12 @@ fail2ban 日志（可选）───────────────┘     
 | `__RESOLUTIONS_PATH__` | 已处理事件登记 | 必填 | 实际路径（建议跟生成器放一起） |
 | `__AUTOBAN_STATE_PATH__` | 封禁记录 | 必填 | 实际路径（建议跟生成器放一起） |
 | `__AUTOBAN_7D_STATE_PATH__` | 7 天封禁计数 | 必填 | 同上 |
-| `__SMTP_HOST__` | 邮件服务器地址 | 必填 | 日报邮件的 SMTP 服务器（模板默认 Sohu SMTP，换别的邮箱服务商时改这里） |
+| `__SMTP_HOST__` | 邮件服务器地址 | 必填 | 日报邮件的 SMTP 服务器（模板默认465，换别的邮箱服务商时改这里） |
 | `__SMTP_SENDER__` | 发件邮箱 | 必填 | 新主机发日报邮件用的邮箱（SMTP 账号） |
 | `__SMTP_RECEIVER__` | 收件邮箱 | 必填 | 接收日报邮件的邮箱 |
 | `__SMTP_PASSWORD__` | 发件邮箱密码 | 必填 | 发件邮箱的密码，不要外泄 |
+| `__IMAP_HOST__` | IMAP 服务器地址 | 可选 | 你的邮箱服务商的 IMAP 地址；生成器用它把已发的日报存进“已发送”。不用这功能时留着 |
+| `__IMAP_SENT_FOLDER__` | 已发送文件夹名 | 可选 | 你的邮箱“已发送”文件夹的 IMAP 名（如 `Sent`；中文名填 UTF-7 编码）。不用这功能时留着 |
 | `__OWNER_NAME__` | 所有者名字 | 必填 | 你的名字；看板页脚 © 署名用它，生成器也用它认出你自己的 SSH 钥匙（钥匙注释里带这个词的归到所有者）。 |
 | `__HOST_PUBLIC_IP__` | 本机公网 IP | 必填 | 本机自己的公网 IP（单个地址）；面板/SSH 有时会记下本机自己从公网 IP 登录，那不是陌生人 |
 | `__EGRESS_NET_1__` | 助手出口网段 1 | 可选 | 助手工具出口的网段（CIDR）；有多个按顺序填，`__EGRESS_NET_2__` 同理。没有助手工具连这台主机时两个都留着 |
@@ -166,7 +168,7 @@ fail2ban 日志（可选）───────────────┘     
 - 面板登录库：生成器读 `/www/server/panel/data/db/log.db`（宝塔）。没有宝塔 时代码能容忍缺失，面板登录那栏会是空的。
 - nginx 可执行文件：生成器调 `/www/server/nginx/sbin/nginx`。nginx 在别处 时改 `_NGINX_BIN`。
 
-邮件服务器端口不用改，模板里已经是现成的（Sohu SMTP 465）。换用别的 邮箱服务商时，再改模板里的 `SMTP_SERVER` / `SMTP_PORT` / `IMAP_SERVER`。
+邮件服务器端口不用改，模板里已经是现成的（465）。换用别的邮箱服务商时，再改模板里的 `SMTP_SERVER` / `SMTP_PORT` / `IMAP_SERVER` / `IMAP_SENT_FOLDER`。
 
 ### index.html.template 里要改的地方
 
