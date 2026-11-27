@@ -1,0 +1,25 @@
+# 安全看板 nginx 配置模板（占位符说明见 deploy-guide.md）
+# 两部分：(1) http 段里 include 封禁名单（autoban 写这个文件，生成器
+# 改完后自己跑 nginx -t，通过才 reload，不用手动 reload）；
+# (2) 看板域名的 server 段（只 serving 静态文件）。
+
+# --- (1) 放进 nginx.conf 的 http { } 里（只需一次，全站生效）---
+# include __BLOCKLIST_PATH__;
+
+# --- (2) 看板站点的 server 段（按需改域名与路径）---
+server {
+    listen 80;
+    server_name __DASHBOARD_DOMAIN__;
+
+    # 看板是静态页；root 指向站点根目录，dashboard 是其下的子目录。
+    root __SITE_ROOT__;
+    index index.html;
+
+    location /dashboard/ {
+        # 静态文件直出；s-<key>.json 也在这里。
+        try_files $uri $uri/ =404;
+    }
+
+    # 其余 location（SSL、PHP、其他站点）按新主机实际情况补。
+    # 注意：如果新主机用 HTTPS，把 listen 80 改成 443 ssl 并补证书路径。
+}

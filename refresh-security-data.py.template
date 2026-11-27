@@ -1,0 +1,24 @@
+#!/usr/bin/python3
+# Refresh ONLY the security dashboard data file (s-<key>.json) by calling
+# write_security_data() from __DASHBOARD_INIT_PY__. No site checks, no email.
+# Run every 30 minutes from cron on the dashboard host itself.
+# Template: fill in the __placeholders__ per deploy-guide.md, then drop
+# the .template suffix and put this file at __REFRESH_SCRIPT__.
+import importlib.util
+import json
+import sys
+
+spec = importlib.util.spec_from_file_location("dashboard_init", "__DASHBOARD_INIT_PY__")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.write_security_data()
+
+# Report the new generated_at from the data file just written.
+import glob
+files = glob.glob("__DASHBOARD_DIR__/s-*.json")
+if files:
+    with open(files[0], encoding="utf-8") as f:
+        data = json.load(f)
+    print("refreshed:", data.get("generated_at"))
+else:
+    print("refreshed (no data file found)", file=sys.stderr)

@@ -1,0 +1,35 @@
+{
+  "autoban_safe_nets": {
+    "cidrs": ["10.0.0.0/8", "172.16.0.0/12", "__LAN_NET__", "192.168.0.0/16", "__TAILSCALE_NET__", "169.254.0.0/16"],
+    "note": "Never-ban networks (LAN / Tailscale / ZeroTier / link-local)."
+  },
+  "blog_exact_paths": {
+    "note": "Exact paths excluded only for the blog site (compared after stripping the query).",
+    "paths": ["/tags/wordpress/index.xml", "/categories/wordpress/index.xml"]
+  },
+  "cgi_bin_regex": {
+    "note": "cgi-bin paths on the main site: the site is purely static with no CGI programs; hits are only public config files from a watermark tool's own directory.",
+    "regex": "(?:^|/)cgi-bin(?:/|$)"
+  },
+  "exclude_ips": {
+    "ips": ["__HOME_IP__", "127.0.0.1", "::1"],
+    "note": "IPs not counted as attacks (your own IP and localhost)."
+  },
+  "exclude_nets": {
+    "cidrs": ["__EGRESS_NET_1__", "__EGRESS_NET_2__"],
+    "note": "Assistant tool egress networks, not counted as attacks."
+  },
+  "good_bots": {
+    "note": "Good crawler UA substrings (case-insensitive); a hit means the request is not counted as an attack.",
+    "substrings": ["googlebot", "bingbot", "baiduspider", "yandexbot", "duckduckbot", "slurp", "sogou", "360spider", "applebot", "dotbot"]
+  },
+  "image_extensions": {
+    "extensions": ["jpg", "jpeg", "png", "gif", "webp", "svg", "ico", "bmp", "avif", "tif", "tiff"],
+    "note": "Image requests are never counted as attacks."
+  },
+  "note": "Security dashboard classification rules (whitelists / exclusions). Edit this file without touching dashboard-init.py; the next generation picks it up. If the file is broken or missing there is no fallback: the generator writes an unknown dashboard.",
+  "taxonomy_regexes": {
+    "note": "Blog category/tag content-page regexes (case-insensitive); a hit means the request is not counted as an attack. Includes the old-style category feed /post/category/<name>/feed (DotBot false positive).",
+    "regexes": ["^/(?:(?:categories|tags)/[^/.\\s]+|post/category/[^/.\\s]+/feed)/?$"]
+  }
+}

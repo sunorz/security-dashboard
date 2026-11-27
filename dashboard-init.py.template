@@ -1,0 +1,2547 @@
+import smtplib
+import imaplib
+import time
+from datetime import datetime
+from email.mime.text import MIMEText
+# SMTP Email Configuration
+SMTP_SERVER = "__SMTP_HOST__"
+SMTP_PORT = 465
+SENDER_EMAIL = "__SMTP_SENDER__"
+SENDER_PASSWORD = "__SMTP_PASSWORD__"
+RECEIVER_EMAIL = "__SMTP_RECEIVER__"
+
+# IMAP Email Configuration (用于把已发送邮件存入"已发送"文件夹)
+IMAP_SERVER = "imap.sohu.com"
+IMAP_PORT = 993
+IMAP_SENT_FOLDER = "&XfJT0ZABkK5O9g-"  # 搜狐邮箱"已发送"文件夹的实际IMAP名称（UTF-7编码）
+
+
+def save_to_sent(msg):
+    try:
+        imap = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        imap.login(SENDER_EMAIL, SENDER_PASSWORD)
+        imap.append(
+            IMAP_SENT_FOLDER,
+            "",
+            imaplib.Time2Internaldate(time.time()),
+            msg.as_bytes(),
+        )
+        imap.logout()
+        print("Email saved to Sent folder successfully.")
+    except Exception as e:
+        print(f"Failed to save to Sent folder: {type(e).__name__}: {e}")
+
+
+def send_email(subject, body, max_retries=3, retry_delay=30):
+    """
+    发送邮件，失败时自动重试。
+    max_retries: 最大重试次数（不含首次尝试）
+    retry_delay: 每次重试之间的基础等待秒数（会随重试次数递增：30s, 60s, 90s...）
+    """
+    msg = MIMEText(body, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+
+    last_error = None
+
+    for attempt in range(1, max_retries + 2):  # 1 = 首次尝试，之后是重试
+        try:
+            # 465 是隐式 SSL 端口，连接建立时就已经是加密的，
+            # 必须用 SMTP_SSL，不能用 SMTP() + starttls()（那是给 587 用的）。
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
+                print(f"Status report email sent successfully. (attempt {attempt})")
+            save_to_sent(msg)
+            return  # 成功，直接返回，不再重试
+        except smtplib.SMTPAuthenticationError as e:
+            # 认证失败重试也没用，直接记录并退出，避免账号被进一步风控/锁定
+            print(f"[AUTH FAILED] 用户名或独立密码不对，或者独立密码已过期/被重置: {e}")
+            return
+        except smtplib.SMTPConnectError as e:
+            last_error = e
+            print(f"[CONNECT FAILED] 连不上服务器 (attempt {attempt}/{max_retries + 1}): {e}")
+        except (TimeoutError, smtplib.SMTPServerDisconnected) as e:
+            last_error = e
+            print(f"[TIMEOUT/DISCONNECTED] 连接被中断，可能是偶发风控或网络抖动 (attempt {attempt}/{max_retries + 1}): {type(e).__name__}: {e}")
+        except Exception as e:
+            last_error = e
+            print(f"Failed to send email (attempt {attempt}/{max_retries + 1}): {type(e).__name__}: {e}")
+
+        if attempt <= max_retries:
+            wait_time = retry_delay * attempt  # 30s, 60s, 90s 递增，避免连续撞上同一个限流窗口
+            print(f"Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+
+    print(f"[GIVE UP] 已重试 {max_retries} 次仍然失败，放弃发送。最后一次错误: {last_error}")
+
+
+def daily_report():
+    """Daily security report: rotate the dashboard key, generate the
+    dashboard data, and send the email with the dashboard link.
+
+    No website connectivity check (that is a separate function); the
+    dashboard does two things only: generate the board, and send its link.
+    """
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    subject = f"[{today_str}] 安全日报"
+    # Rotate the dashboard key first and confirm it took effect, then
+    # generate the data and send the email; if rotation fails the email
+    # still goes out, but the footer link is replaced with a failure note.
+    _key_rotated = True
+    try:
+        rotate_dashboard_key_verified()
+    except Exception as e:
+        _key_rotated = False
+        print(f"Dashboard key rotation failed: {type(e).__name__}: {e}")
+    # Generate the security dashboard data; a failure does not stop the email
+    try:
+        write_security_data()
+    except Exception as e:
+        print(f"Failed to write security data: {type(e).__name__}: {e}")
+    if _key_rotated:
+        email_body = f"\n<p>Security log: https://shop.example.com/dashboard/?key={dashboard_report_path().stem[2:]}</p>"
+    else:
+        email_body = "\n<p>key更新失败，请检查设置。</p>"
+    # Sync the dashboard link to the relay file (host 2 reads it and writes
+    # it to the end of its file)
+    _write_dashboard_link_relay()
+    if _LAST_AUTOBANS_NEW:
+        _ab_line = ", ".join(
+            "%s (%d attack requests in 7 days)" % (b["ip"], b["count"])
+            for b in _LAST_AUTOBANS_NEW)
+        email_body += f"\n<p>Auto-banned this run: {_ab_line}</p>"
+    send_email(subject, email_body)
+
+
+# ================= 安全日志看板（shop.example.com/dashboard） =================
+# 本脚本每日运行时，解析统计时段（见 _security_window：07:00 起、07:30 翻页、
+# 结束封顶于起始日 22:00）的
+# nginx 访问日志，把攻击来源汇总写成 JSON 文件 s-<KEY>.json 放在看板目录；
+# 看板页凭 ?key= 参数派生该文件名读取。KEY 只存在于本脚本与日报邮件页脚，
+# 不要把这个值写进任何网页文件。
+import json
+import os
+import re
+import ipaddress
+import urllib.request
+from collections import Counter
+from datetime import timedelta
+
+def _net(s):
+    """Parse a network placeholder. An unfilled/invalid value becomes
+    TEST-NET-1 (192.0.2.0/24, a documentation range that never carries real
+    traffic), so the program still runs and the entry simply never matches.
+    Fill in a real network only if you have one; otherwise leave it."""
+    try:
+        return ipaddress.ip_network(s)
+    except ValueError:
+        return ipaddress.ip_network("192.0.2.0/24")
+
+
+# 判定规则（白名单/排除项）存在 __RULES_PATH__，改规则改文件，
+# 不动代码；文件坏了或丢了，用下面的内置默认值兜底，不停摆。
+_RULES_PATH = "__RULES_PATH__"
+# 配置文件是规则的唯一来源，不再内置默认值兜底。
+# 文件丢了、不是 JSON、不是 dict、或任一节缺失/写坏，规则即不可信，
+# _RULES_OK 为 False，生成器写未知看板，不参与评级；封禁按已有 7 天累计继续执行。
+# 占位值仅保证模块可导入、正则可编译，绝不参与评级与封禁。
+_RULES_PLACEHOLDER = {
+    "good_bots": [],
+    "taxonomy_regexes": [r"(?!)"],
+    "blog_exact_paths": [],
+    "image_extensions": [],
+    "cgi_bin_regex": r"(?!)",
+    "exclude_ips": [],
+    "exclude_nets": [],
+    "autoban_safe_nets": [],
+}
+
+
+def _load_rules():
+    try:
+        with open(_RULES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("dashboard rules: cannot load %s (%s); rules unknown" % (_RULES_PATH, e))
+        return dict(_RULES_PLACEHOLDER), False
+    if not isinstance(data, dict):
+        print("dashboard rules: bad format in %s; rules unknown" % _RULES_PATH)
+        return dict(_RULES_PLACEHOLDER), False
+
+    def _str_list(v):
+        return isinstance(v, list) and all(isinstance(x, str) and x for x in v)
+
+    def _section(name, value_key):
+        sec = data.get(name)
+        if isinstance(sec, dict):
+            return sec.get(value_key)
+        return None
+
+    rules = {}
+    ok = True
+    v = _section("good_bots", "substrings")
+    if _str_list(v):
+        rules["good_bots"] = v
+    else:
+        ok = False
+    v = _section("taxonomy_regexes", "regexes")
+    if _str_list(v):
+        good = []
+        for p in v:
+            try:
+                re.compile(p)
+                good.append(p)
+            except re.error:
+                print("dashboard rules: bad taxonomy regex skipped: %r" % p)
+        if good:
+            rules["taxonomy_regexes"] = good
+        else:
+            ok = False
+    else:
+        ok = False
+    v = _section("blog_exact_paths", "paths")
+    if _str_list(v) and all(p.startswith("/") for p in v):
+        rules["blog_exact_paths"] = v
+    else:
+        ok = False
+    v = _section("image_extensions", "extensions")
+    if _str_list(v) and all(re.fullmatch(r"[A-Za-z0-9]+", e) for e in v):
+        rules["image_extensions"] = v
+    else:
+        ok = False
+    v = _section("cgi_bin_regex", "regex")
+    if isinstance(v, str) and v:
+        try:
+            re.compile(v)
+            rules["cgi_bin_regex"] = v
+        except re.error:
+            print("dashboard rules: bad cgi-bin regex skipped")
+            ok = False
+    else:
+        ok = False
+    v = _section("exclude_ips", "ips")
+    if _str_list(v):
+        try:
+            [ipaddress.ip_address(x) for x in v]
+            rules["exclude_ips"] = v
+        except ValueError:
+            print("dashboard rules: bad exclude_ips skipped")
+            ok = False
+    else:
+        ok = False
+    for name, key in (("exclude_nets", "cidrs"), ("autoban_safe_nets", "cidrs")):
+        v = _section(name, key)
+        if _str_list(v):
+            try:
+                [ipaddress.ip_network(x) for x in v]
+                rules[name] = v
+            except ValueError:
+                print("dashboard rules: bad %s skipped" % name)
+                ok = False
+        else:
+            ok = False
+    if not ok:
+        print("dashboard rules: config invalid; rules unknown")
+        return dict(_RULES_PLACEHOLDER), False
+    return rules, True
+
+
+_RULES, _RULES_OK = _load_rules()
+
+DASHBOARD_DIR = "__DASHBOARD_DIR__"
+_DASHBOARD_LINK_RELAY = "__DASHBOARD_LINK_PATH__"
+WWWLOGS_DIR = "__LOG_DIR__"
+
+_ATTACK_RE = re.compile(
+    r"(\.env|\.git|wp-|wp_|wordpress|\.php|actuator|graphql|_debugbar|telescope|"
+    r"cgi-bin|\.aws|/\.config|\.bak|/backup|\.sql|xmlrpc|backdoor|webshell)",
+    re.IGNORECASE,
+)
+_LOG_RE = re.compile(
+    r'^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*?) HTTP/[^"]*" (\d{3}) (\S+) "[^"]*" "([^"]*)"'
+)
+_MONTH_NUM = {
+    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+}
+_CF_NETS = [
+    ipaddress.ip_network(c)
+    for c in (
+        "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+        "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+        "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+        "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    )
+]
+# 判定规则（白名单/排除项）见 __RULES_PATH__，改规则改文件不动代码；
+# 下面各项由 _RULES 构建；配置文件坏了或丢了，_RULES_OK 为 False，生成器写未知看板。
+_EXCLUDE_NETS = [ipaddress.ip_network(c) for c in _RULES["exclude_nets"]]
+_IMAGE_RE = re.compile(
+    r"\.(?:" + "|".join(re.escape(e) for e in _RULES["image_extensions"]) + r")(?:\?|$)", re.I)
+_TAXONOMY_RE = re.compile(
+    "(?:" + ")|(?:".join(_RULES["taxonomy_regexes"]) + ")", re.I)
+_OWN_CGI_RE = re.compile(_RULES["cgi_bin_regex"], re.I)
+_EXCLUDE_IPS = set(_RULES["exclude_ips"])  # 本人 IP 与本机
+_BLOG_EXACT_PATHS = set(_RULES["blog_exact_paths"])
+_GOOD_BOT_RE = re.compile(
+    "(" + "|".join(re.escape(s) for s in _RULES["good_bots"]) + ")", re.IGNORECASE)
+
+
+def _classify_signature(method, target, site):
+    """把一条攻击请求按手法分类，返回 (签名, 标题, 想干什么)。
+    只依据请求本身的特征判断；认不出的走兜底说明，不编造漏洞名。"""
+    import urllib.parse
+    raw = target or ""
+    try:
+        dec = urllib.parse.unquote(raw)
+    except Exception:
+        dec = raw
+    hay = (raw + "\n" + dec).lower()
+    if "{pboot" in hay or "pboot:" in hay:
+        return ("pbootcms", "PbootCMS 模板注入攻击",
+                "他想利用 PbootCMS 模板注入漏洞，把代码藏进网址让服务器当模板执行，"
+                "再写入木马文件、夺取控制权。")
+    if ("allow_url_include" in hay or "auto_prepend_file" in hay
+            or ("%ad" in raw.lower() and ".php" in hay)):
+        return ("phpcgi_rce", "PHP-CGI 漏洞利用（CVE-2024-4577）",
+                "他想利用 PHP 的已知漏洞（CVE-2024-4577），在网址参数里夹带特殊编码，"
+                "骗服务器把参数当成 PHP 配置执行，从而远程运行命令。")
+    if "../" in dec or "..\\" in dec or "..;" in hay:
+        return ("traversal", "路径遍历",
+                "他在网址里塞入 ../ 这类跳转符号，想跳出网站目录，"
+                "去读服务器上本不该对外开放的其他文件（比如系统配置、密码文件）。")
+    if re.match(r"^/(categories|tags)/", dec):
+        return ("site_content", "本站内容页（疑似误报）",
+                "请求的是博客自己的分类/标签页面，只因页面名称里含有 wordpress 等关键词，"
+                "被攻击特征规则误报；这与普通读者打开这个页面没有区别。")
+    if (".env" in hay or ".git" in hay or ".aws" in hay or "/.config" in hay
+            or ".bak" in hay or ".sql" in hay or "/backup" in hay):
+        return ("config_theft", "窃取配置文件或源码",
+                "他想偷网站的配置文件或源码仓库（如 .env、.git），"
+                "这类文件里可能存着数据库密码、密钥等敏感信息，拿到手就能进一步入侵。")
+    if (".zip" in hay or ".tar" in hay or ".tgz" in hay or ".rar" in hay
+            or ".7z" in hay or ".gz" in hay or ".bz2" in hay or ".xz" in hay):
+        return ("backup_theft", "窃取网站备份",
+                "他想下载网站的备份压缩包（如 wordpress.zip、backup.tar.gz），"
+                "这类压缩包里通常装着整站源码和数据库配置文件（如 wp-config.php），"
+                "拿到手就等于拿到了数据库密码和整站源码。")
+    if ("wp-login" in hay or "wp-admin" in hay or "wp-content" in hay
+            or "wp-includes" in hay or "wp-json" in hay or "xmlrpc" in hay
+            or "wp-" in hay):
+        return ("wordpress", "WordPress 探测",
+                "他在找 WordPress 的登录入口和已知漏洞，想确认这台服务器是不是用 WordPress 建的站；"
+                "本站不是 WordPress，这些入口并不存在。")
+    if ("_debugbar" in hay or "telescope" in hay or "actuator" in hay
+            or "graphql" in hay or "_profiler" in hay or "app_dev.php" in hay
+            or "phpinfo" in hay):
+        return ("debug_interface", "寻找调试/管理接口",
+                "他在找网站框架自带的调试或管理接口（如开发调试条、性能分析页）；"
+                "这类接口若对外开放，可能泄露网站内部信息，甚至被用来执行命令。")
+    if "cgi-bin" in hay:
+        return ("cgi_probe", "CGI 程序漏洞探测",
+                "他在试老式 CGI 程序的已知漏洞路径，想借此在服务器上执行命令或读取文件。")
+    if ".php" in hay:
+        return ("webshell", "试探木马文件",
+                "他在逐个试常见的木马/后门文件名（如各种 .php 文件），"
+                "想看看服务器上有没有现成的后门可以利用；本站没有这类文件。")
+    shown = dec if len(dec) <= 90 else dec[:90] + "…"
+    return ("other", "未识别的探测",
+            "他对 %s 的 %s 发起了 %s 请求进行探测。特征库里没有与之匹配的已知攻击手法，"
+            "无法确定他的具体目的，但可以肯定这不是正常浏览。" % (site, shown, method))
+
+
+def _interpret_incident(sig, cands, home_size, landed404):
+    """根据一组同类候选请求的实际响应，生成（结果如何，结论）。
+    结论只用「未得手 / 需留意」两种，依据写进结果说明里。
+    每种结果有 2~3 条风趣又有知识点的文案，随机挑一条。"""
+    import random
+    if sig == "site_content":
+        return (random.choice([
+            "他命中的只是本站公开页面，内容本来就是公开的。路径里带了 wordpress 这个词，"
+            "被规则误当成攻击了。",
+            "他撞上的只是本站公开页面，内容人人都能看。路径里有个 wordpress 关键词，"
+            "规则一激动就误报了。",
+            "他打开的只是博客自己的分类页，内容本来就是公开的。名字里带了 wordpress，"
+            "被攻击特征规则错认了。",
+        ]), "未得手")
+    statuses = [c["status"] for c in cands]
+    uniq = set(statuses)
+    if uniq == {"200"}:
+        if home_size is not None and all(c["size"] == home_size for c in cands):
+            return (random.choice([
+                "他只拿到了公开首页（%d 字节，和首页一模一样），注入代码根本没起作用。"
+                "网址里的代码只是串字符，服务器可不会把它当真。",
+                "他费了半天劲，只拿到了人人都能看的公开首页（%d 字节）。注入的代码一句也没执行，"
+                "纯属白忙活。",
+                "他拿到的就是公开首页（%d 字节，分毫不差），注入代码连个响都没听见。"
+                "网址参数只是字符串，可不是能执行的命令。",
+            ]) % home_size, "未得手")
+        return (random.choice([
+            "他拿到了 200 响应，但大小和首页对不上，到底拿了什么说不清。"
+            "200 只代表“给了东西”，不代表“给的是好东西”。建议人工核查。",
+            "他拿到了 200，但返回的大小和首页对不上，里面装了什么没人知道。"
+            "200 是“成功”的意思，可没保证内容就是你想要的。建议人工核查。",
+            "服务器给了他 200，可大小和首页不匹配，到底吐了什么出来说不清。"
+            "200 只管“给了”，不管“给得对不对”。建议人工核查。",
+        ]), "需留意")
+    if uniq <= {"301", "302", "303", "307", "308"}:
+        if landed404:
+            return (random.choice([
+                "他被重定向到 404，什么都没拿到。3xx 只是指路，"
+                "路的尽头是块“此路不通”的牌子。",
+                "他跟着重定向走了一圈，最后落到 404。3xx 的意思是“去别处”，"
+                "可别处压根啥也没有。",
+                "他被重定向带去了 404，扑了个空。重定向只是张指路牌，"
+                "不保证路那头有东西。",
+            ]), "未得手")
+        return (random.choice([
+            "服务器只给了他重定向（%s），没给文件内容。3xx 就是句“去别处”，"
+            "文件可不会自己跟过去。",
+            "他只拿到了一串重定向（%s），文件内容半点没见着。3xx 是让你换个地方找，"
+            "可不是把文件递到你手里。",
+            "服务器甩给他一个重定向（%s）就打发了，文件内容想都别想。3xx 只负责指路，"
+            "不负责送货。",
+        ]) % "、".join(sorted(uniq)), "未得手")
+    if uniq == {"502"}:
+        return (random.choice([
+            "后端/隧道当时断了，他的请求根本没到网站程序。502 是网关和后端失联，"
+            "请求在半路就断了线。",
+            "他的请求走到一半，后端/隧道断了。502 就是网关找不到后端，"
+            "请求连网站的门都没摸到。",
+            "后端/隧道当时正掉线，他的请求半路夭折。502 的意思是“网关掉了链子”，"
+            "后面的程序压根没收到。",
+        ]), "未得手")
+    if uniq == {"444"}:
+        return (random.choice([
+            "服务器连回应都懒得给，直接掐断了连接。444 是 nginx 的独门操作，"
+            "不回话、不解释，比拉黑还干脆，他什么都没拿到。",
+            "服务器一句话没说，直接把线掐了。444 是 nginx 的特色，不返回任何内容，"
+            "连个状态行都省了，他扑了个空。",
+            "他连个回应都没等到，连接直接被掐断。444 根本不是标准状态码，"
+            "是 nginx 自创的“已读不回”，干脆利落。",
+        ]), "未得手")
+    if uniq <= {"400", "401", "403", "405", "411", "414", "429"}:
+        return (random.choice([
+            "服务器用 %s 把他挡了回去，他什么都没拿到。4xx 的意思是“你的请求有问题”，"
+            "服务器直接拒收。",
+            "他递过去的请求有问题，服务器用 %s 直接拒收。4xx 就是客户端的错，"
+            "怪不得服务器不搭理他。",
+            "服务器甩了他一个 %s，头都不回。4xx 代表请求本身不合格，服务器懒得伺候。",
+        ]) % "、".join(sorted(uniq)), "未得手")
+    if uniq == {"500"}:
+        return (random.choice([
+            "服务器报了 500 内部错误，他什么都没拿到。500 是服务器自己出了岔子，"
+            "他连门都没摸到。",
+            "服务器自己先报了 500 内部错误，他什么都没捞着。500 的意思是“服务器内部翻车了”，"
+            "跟他没关系，纯属他运气差。",
+            "他还没动手，服务器自己就 500 了。内部错误一出，请求直接作废，"
+            "他连门都没摸到。",
+        ]), "未得手")
+    home200 = 0
+    unknown200 = 0
+    for c in cands:
+        if c["status"] == "200":
+            if home_size is not None and c["size"] == home_size:
+                home200 += 1
+            else:
+                unknown200 += 1
+    parts = []
+    if home200:
+        parts.append("%d 次只拿到公开首页" % home200)
+    if unknown200:
+        parts.append("%d 次拿到 200 但内容说不清" % unknown200)
+    redir = sum(1 for s in statuses if s in ("301", "302", "303", "307", "308"))
+    if redir:
+        parts.append("%d 次被重定向" % redir + ("到 404" if landed404 else ""))
+    n502 = statuses.count("502")
+    if n502:
+        parts.append("%d 次碰上 502" % n502)
+    rest = len(cands) - home200 - unknown200 - redir - n502
+    if rest > 0:
+        parts.append("%d 次被挡了回去" % rest)
+    verdict = "需留意" if unknown200 else "未得手"
+    if unknown200:
+        return ("他 " + "，".join(parts) + "。" + random.choice([
+            "建议人工核查。",
+            "这事得人工看一眼。",
+            "建议人工核查一下。",
+        ]), verdict)
+    return ("他 " + "，".join(parts) + "。" + random.choice([
+        "总之，他这一趟白跑了。",
+        "总之，他这一趟啥也没捞着。",
+        "这一趟下来，他还是空手而归。",
+    ]), verdict)
+
+
+def _describe_source(cands, iloc):
+    cf_ips = {c["ip"] for c in cands if c["via_cf"]}
+    real_ips = sorted({c["ip"] for c in cands if not c["via_cf"]})
+    parts = []
+    if real_ips:
+        shown = []
+        for ip in real_ips[:3]:
+            loc = iloc.get(ip)
+            shown.append("%s（%s）" % (ip, loc) if loc else ip)
+        s = "真实 IP：" + "、".join(shown)
+        if len(real_ips) > 3:
+            s += " 等共 %d 个" % len(real_ips)
+        parts.append(s)
+    if cf_ips:
+        parts.append("经 Cloudflare 节点转发（%d 个节点 IP，看不到真实来源）" % len(cf_ips))
+    return "；".join(parts) if parts else "来源未知"
+
+
+def _source_list(cands, iloc):
+    """事件来源的结构化清单（供看板格式化排版）：全部真实 IP（带归属地）、
+    真实 IP 总数、经 Cloudflare 转发的节点 IP 数。看板以下拉菜单全量展示。"""
+    real_ips = sorted({c["ip"] for c in cands if not c["via_cf"]})
+    cf_count = len({c["ip"] for c in cands if c["via_cf"]})
+    sources = []
+    for ip in real_ips:
+        entry = {"ip": ip}
+        loc = iloc.get(ip)
+        if loc:
+            entry["loc"] = loc
+        sources.append(entry)
+    return sources, len(real_ips), cf_count
+
+
+def _fmt_range(first, last):
+    if first.date() == last.date():
+        return "%s ~ %s" % (first.strftime("%Y-%m-%d %H:%M:%S"),
+                             last.strftime("%H:%M:%S"))
+    return "%s ~ %s" % (first.strftime("%Y-%m-%d %H:%M:%S"),
+                         last.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _landed_404(follow_index, cand):
+    for ts2, st2 in follow_index.get(cand["target"], []):
+        if st2 == "404" and 0 <= (ts2 - cand["ts"]).total_seconds() <= 180:
+            return True
+    return False
+
+
+def _build_incidents(candidates, home_sizes, follow_index):
+    """把非 404/403 的探测请求按（手法签名 + 站点）分组成事件，
+    每组生成一段主人能看懂的说明，原始日志只保留一条作样本。"""
+    groups = {}
+    for c in candidates:
+        sig, title, intent = _classify_signature(c["method"], c["target"], c["site"])
+        key = (sig, c["site"])
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {
+                "signature": sig, "title": title, "intent": intent,
+                "site": c["site"], "cands": [],
+            }
+        g["cands"].append(c)
+    real_ips = sorted({c["ip"] for g in groups.values()
+                       for c in g["cands"] if not c["via_cf"]})
+    iloc = _geolocate(real_ips) if real_ips else {}
+    incidents = []
+    for g in groups.values():
+        cands = sorted(g["cands"], key=lambda c: c["ts"])
+        home_size = None
+        if home_sizes.get(g["site"]):
+            top_size = home_sizes[g["site"]].most_common(1)[0][0]
+            try:
+                home_size = int(top_size)
+            except (TypeError, ValueError):
+                home_size = None
+        landed404 = any(
+            _landed_404(follow_index, c) for c in cands
+            if c["status"] in ("301", "302", "303", "307", "308")
+        )
+        outcome, verdict = _interpret_incident(
+            g["signature"], cands, home_size, landed404)
+        src_list, src_total, cf_nodes = _source_list(cands, iloc)
+        incidents.append({
+            "signature": g["signature"],
+            "title": g["title"],
+            "site": g["site"],
+            "count": len(cands),
+            "first_seen": cands[0]["ts"].strftime("%Y-%m-%d %H:%M:%S"),
+            "last_seen": cands[-1]["ts"].strftime("%Y-%m-%d %H:%M:%S"),
+            "time_range": _fmt_range(cands[0]["ts"], cands[-1]["ts"]),
+            "source": _describe_source(cands, iloc),
+            "intent": g["intent"],
+            "outcome": outcome,
+            "verdict": verdict,
+            "raw_example": cands[0]["raw"],
+            "sources": src_list,
+            "sources_total": src_total,
+            "cf_nodes": cf_nodes,
+        })
+    incidents.sort(key=lambda x: (-x["count"], x["first_seen"]))
+    return incidents
+
+
+def _parse_log_time(raw):
+    """'20/Nov/2026:07:12:33 +0800' -> naive datetime（日志时区即 CST）。"""
+    try:
+        parts = raw.replace(":", " ").split()
+        day, mon, year = parts[0].split("/")
+        return datetime(
+            int(year), _MONTH_NUM[mon], int(day),
+            int(parts[1]), int(parts[2]), int(parts[3]),
+        )
+    except Exception:
+        return None
+
+
+def dashboard_report_path():
+    from pathlib import Path
+
+    reports = [p for p in Path(DASHBOARD_DIR).glob("s-*.json")
+               if re.fullmatch(r"s-[0-9a-f]{64}[.]json", p.name)
+               and p.is_file() and not p.is_symlink()]
+    if len(reports) != 1:
+        raise RuntimeError("Expected exactly one active dashboard report")
+    return reports[0]
+
+
+def rotate_dashboard_key():
+    import secrets
+
+    current = dashboard_report_path()
+    replacement = current.with_name("s-" + secrets.token_hex(32) + ".json")
+    current.rename(replacement)
+
+
+def rotate_dashboard_key_verified():
+    """轮换看板 key 并确认已生效：返回新 key。
+    轮换前后文件名必须不同且目录内仍恰好一份数据文件，否则抛异常，
+    调用方据此把邮件页脚换成失败提示（邮件照发）。"""
+    before = dashboard_report_path()
+    rotate_dashboard_key()
+    after = dashboard_report_path()
+    if after == before:
+        raise RuntimeError("Dashboard key rotation did not take effect")
+    return after.stem[2:]
+
+
+def _write_dashboard_link_relay():
+    """把本封邮件里的看板地址同步写到中转文件：
+    每次发邮件前调用，值与邮件页脚完全一致（轮换后的新 key）。
+    另一台主机的刷新脚本每 30 分钟取一次，写进指定文件末尾。失败不影响邮件发送。"""
+    try:
+        key = dashboard_report_path().stem[2:]
+        line = "[安全看板](https://shop.example.com/dashboard/?key=%s)\n" % key
+        with open(_DASHBOARD_LINK_RELAY, "w", encoding="utf-8") as f:
+            f.write(line)
+        os.chmod(_DASHBOARD_LINK_RELAY, 0o644)
+    except Exception as e:
+        print("Dashboard link relay failed: %s: %s"
+              % (type(e).__name__, e))
+
+
+def _security_window():
+    """统计时段（CST）：以 07:00 为界，07:30 才翻页；
+    时段结束封顶于起始日 22:00，22:00 后冻结至次日 07:00。
+    07:00–07:29:59 间显示上一时段的完整累计：昨日 07:00 → 今日
+    07:00（即截至今日 06:59:59）。"""
+    now = datetime.now()
+    start = now.replace(hour=7, minute=0, second=0, microsecond=0)
+    if now < start:
+        start -= timedelta(days=1)
+    if now < start + timedelta(minutes=30):
+        return start - timedelta(days=1), start
+    end = min(now, start + timedelta(hours=15))
+    return start, end
+
+
+_GEO_FAILED = set()
+
+
+def _geolocate(ips):
+    """用 ip-api.com 批量查询归属地（国家 · 城市），每批 100 个，批间停顿。"""
+    locs = {}
+    for i in range(0, len(ips), 100):
+        chunk = ips[i:i + 100]
+        try:
+            req = urllib.request.Request(
+                "http://ip-api.com/batch?fields=status,country,city,query",
+                data=json.dumps([{"query": ip} for ip in chunk]).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                for item in json.loads(resp.read().decode("utf-8")):
+                    if item.get("status") == "success":
+                        loc = item.get("country") or ""
+                        city = item.get("city") or ""
+                        if city:
+                            loc = (loc + " · " + city) if loc else city
+                        if loc:
+                            locs[item.get("query")] = loc
+        except Exception as e:
+            _GEO_FAILED.update(chunk)
+            print(f"Geolocation chunk failed: {type(e).__name__}: {e}")
+        if i + 100 < len(ips):
+            time.sleep(2)
+    return locs
+
+
+
+# ---------- 主机安全（看板「主机安全」板块） ----------
+import base64
+import gzip
+import hashlib
+import pwd
+import sqlite3
+import subprocess
+
+HOST2_FILE = "__HOST2_JSON_PATH__"
+_HOST_STATE_FILE = "__HOSTSEC_STATE_PATH__"
+# 面板登录的已知来源：站主家庭网段（动态 IP 在此段内轮换）。
+_PANEL_KNOWN_NETS = [_net("__HOME_NET__")]
+# 本机公网 IP：面板/SSH 有时记下本机自己从公网 IP 登录，那不是陌生人。
+_PANEL_KNOWN_IPS = {"__HOST_PUBLIC_IP__"}
+_PANEL_DB = "/www/server/panel/data/db/log.db"
+_SSH_FAIL_RE = re.compile(
+    r"Failed (?:password|publickey|none|keyboard-interactive/pam)"
+    r" for .* from (\S+) port \d+")
+_SSH_OK_RE = re.compile(
+    r"Accepted (?:password|publickey|keyboard-interactive/pam)"
+    r" for \S+ from (\S+) port \d+")
+_SSH_FAIL_EV_RE = re.compile(
+    r"Failed (password|publickey|none|keyboard-interactive/pam)"
+    r" for (?:invalid user )?(\S+) from (\S+) port \d+")
+_SSH_OK_EV_RE = re.compile(
+    r"Accepted (password|publickey|keyboard-interactive/pam)"
+    r" for (\S+) from (\S+) port \d+"
+    r"(?: ssh2: \S+ SHA256:([A-Za-z0-9+/=]+))?")
+
+
+def _host_event_add(events, ip, user, method, ok, ts, fp=""):
+    key = (ip, user, method, ok, fp)
+    e = events.get(key)
+    if e is None:
+        events[key] = [1, ts, ts]
+    else:
+        e[0] += 1
+        if ts < e[1]:
+            e[1] = ts
+        if ts > e[2]:
+            e[2] = ts
+_SECURE_TS_RE = re.compile(r"^([A-Z][a-z]{2})\s+(\d{1,2}) (\d{2}):(\d{2}):(\d{2})")
+_F2B_BAN_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}),\d+ .*?\] Ban (\S+)")
+_WAF_TS_RE = re.compile(r'^\["(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):(\d{2})"')
+_PANEL_IP_RE = re.compile(r"登录IP:(\d{1,3}(?:\.\d{1,3}){3})")
+
+# 已知 SSH 来源：站主本人 IP、本机、助手工具出口网段。
+_HOST_KNOWN_IPS = {"__HOME_IP__", "127.0.0.1", "::1", "__HOST_PUBLIC_IP__"}
+_HOST_KNOWN_NETS = [_net("__EGRESS_NET_1__"),
+                    _net("__EGRESS_NET_2__")]
+_HOST_TAILNET_NET = _net("__TAILSCALE_NET__")
+_HOST_ZT_NETS = [_net("__ZEROTIER_NET__")]  # ZeroTier 网段，显示同组网
+_HOST_PRIVATE_NETS = [ipaddress.ip_network("10.0.0.0/8"),
+                      ipaddress.ip_network("172.16.0.0/12"),
+                      ipaddress.ip_network("192.168.0.0/16")]
+# 已知批量来源（助手工具出口）：看板上折叠成一组展开看。
+# 组网 __TAILSCALE_NET__ 也算 Agent 直连（那是助手直连 host 2 的记录）。
+_HOST_BULK_NETS = [_net("__EGRESS_NET_1__"),
+                   _net("__EGRESS_NET_2__"),
+                   _net("__TAILSCALE_NET__")]
+
+
+def _host_window():
+    """主机数据的统计时段，默认与网站数据一致（昨日 07:00 → 今日 07:00）。"""
+    return _security_window()
+
+
+def _secure_line_ts(line, now):
+    m = _SECURE_TS_RE.match(line)
+    if not m:
+        return None
+    mon, day, hh, mm, ss = m.groups()
+    if mon not in _MONTH_NUM:
+        return None
+    try:
+        ts = datetime(now.year, _MONTH_NUM[mon], int(day),
+                      int(hh), int(mm), int(ss))
+    except ValueError:
+        return None
+    if ts > now + timedelta(days=1):
+        ts = ts.replace(year=now.year - 1)
+    return ts
+
+
+def _iter_secure_lines():
+    paths = ["/var/log/secure"]
+    try:
+        for name in sorted(os.listdir("/var/log")):
+            if name.startswith("secure-") or name.startswith("secure."):
+                paths.append(os.path.join("/var/log", name))
+    except Exception:
+        pass
+    for path in paths:
+        try:
+            if path.endswith(".gz"):
+                fh = gzip.open(path, "rt", encoding="utf-8", errors="ignore")
+            else:
+                fh = open(path, "r", encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                yield line
+
+
+
+_KEY_TYPE_TOKENS = ("ssh-ed25519", "ssh-rsa", "ssh-dss",
+                    "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+                    "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com",
+                    "sk-ecdsa-sha2-nistp256@openssh.com")
+
+
+def _panel_known(ip):
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if addr.is_loopback:
+        return True
+    if ip in _PANEL_KNOWN_IPS:
+        return True
+    return any(addr in n for n in _PANEL_KNOWN_NETS)
+
+
+_IP_BASELINE_FILE = "__HOSTSEC_IP_BASELINE_PATH__"
+_USUALLY_KEY_FILE = "__USUALLY_KEY_PATH__"
+
+
+def _load_loc_state():
+    """读取归属地基线（v2：known_locs + pending）。
+
+    返回 (state, first_run, old_ips)：文件不存在 → first_run=True；
+    旧版 {"ips": [...]} → old_ips 带回旧基线 IP 清单，交由
+    _migrate_old_baseline 用当前行数据（必要时查归属地）播种。"""
+    try:
+        with open(_IP_BASELINE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {"known_locs": [], "pending": []}, True, None
+    if isinstance(data, dict) and "known_locs" in data:
+        return ({"known_locs": list(data.get("known_locs") or []),
+                 "pending": list(data.get("pending") or [])},
+                False, None)
+    return ({"known_locs": [], "pending": []}, False,
+            list((data or {}).get("ips") or []))
+
+
+def _save_loc_state(state):
+    try:
+        tmp = _IP_BASELINE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"known_locs": state["known_locs"],
+                       "pending": state["pending"],
+                       "saved_at": datetime.now().strftime(
+                           "%Y-%m-%d %H:%M:%S")},
+                      f, ensure_ascii=False)
+        os.rename(tmp, _IP_BASELINE_FILE)
+    except Exception:
+        pass
+
+
+def _migrate_old_baseline(old_ips, rows):
+    """旧 IP 基线迁移：旧基线 IP 在当前行里出现过的，取其归属地为
+    已知；局域网段直接记「局域网」；其余公网 IP 若本模块有
+    _geolocate 就查一次，都没有就等它下次出现时按新规则判定。"""
+    known = set()
+    by_ip = {}
+    for e in rows:
+        ip = e.get("ip")
+        loc = e.get("loc") or ""
+        if ip and loc:
+            by_ip.setdefault(ip, loc)
+    pubs = []
+    for ip in old_ips:
+        if "/" in ip or ip.startswith(("__LAN_PREFIX__", "192.168.", "10.")):
+            known.add("局域网")
+        elif ip in by_ip:
+            known.add(by_ip[ip])
+        else:
+            pubs.append(ip)
+    geo = globals().get("_geolocate")
+    if pubs and geo is not None:
+        try:
+            for loc in geo(pubs).values():
+                if loc:
+                    known.add(loc)
+        except Exception:
+            pass
+    return known
+
+
+def _flag_new_ip_logins(ok_list, ssh_events):
+    """陌生归属地标记（取代按 IP 判定）：
+    非助手出口（bulk 为空）的密钥成功登录，按归属地 loc（国家 ·
+    城市整串）判定——已知归属地换 IP 不报；第一次出现的归属地标
+    stranger、note=「陌生归属地」，并记入 pending 持久保存，之后
+    每次运行继续标，直到维护者用 --confirm-location 取消（转入
+    已知，并生成 usually-key.json 记录）。归属地为空（查询失败）
+    不判定：查询失败不等于地理变化。基线存 _IP_BASELINE_FILE
+    （v2：known_locs + pending，与密钥状态文件分开，互不覆盖）。"""
+    rows = list(ok_list or []) + list(ssh_events or [])
+    state, first_run, old_ips = _load_loc_state()
+    known = set(state["known_locs"])
+    pending = {p["loc"]: p for p in state["pending"]}
+    changed = False
+    if old_ips is not None:
+        known |= _migrate_old_baseline(old_ips, rows)
+        changed = True
+    for e in rows:
+        if not (e.get("ok") and e.get("method") == "key"
+                and not e.get("anomaly") and not e.get("bulk")):
+            continue
+        loc = e.get("loc") or ""
+        if not loc:
+            # 归属地为空分两种：只是未知
+            # （查过但无结果）→ 什么都不显示；查询真失败
+            # （geo_failed）→ 前台留一行「归属地查询失败」。
+            # 两种都不当作地理变化、不进基线。
+            if e.get("geo_failed") and not e.get("note"):
+                e["note"] = "归属地查询失败"
+            continue
+        if loc in ("局域网", "组网", "本机"):
+            # 内网/组网/本机标签不是地理归属地，恒已知：
+            # 局域网 Xshell、宝塔面板本机终端都走这类来源。
+            continue
+        if loc in known:
+            continue
+        p = pending.get(loc)
+        if p is None:
+            if first_run:
+                known.add(loc)
+                changed = True
+                continue
+            p = pending[loc] = {
+                "loc": loc,
+                "since": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ips": [], "fps": []}
+            changed = True
+        ip = e.get("ip")
+        if ip and ip not in p["ips"]:
+            p["ips"].append(ip)
+            changed = True
+        fp = e.get("fp")
+        if fp and fp not in p["fps"]:
+            p["fps"].append(fp)
+            changed = True
+        e["stranger"] = True
+        e["note"] = "陌生归属地"
+    state["known_locs"] = sorted(known)
+    state["pending"] = sorted(pending.values(), key=lambda p: p["loc"])
+    if changed or first_run:
+        _save_loc_state(state)
+
+
+def _confirm_location(loc):
+    """维护者确认某归属地为常驻/长期使用：取消其陌生标记、转入
+    已知归属地，并把这次确认记入 usually-key.json（key 的陌生标记被取消时生成 usually-key.json）。
+    用法：dashboard-init.py --confirm-location "国家 · 城市"。"""
+    state, _fr, _old = _load_loc_state()
+    hit = None
+    rest = []
+    for p in state["pending"]:
+        if p["loc"] == loc:
+            hit = p
+        else:
+            rest.append(p)
+    state["pending"] = rest
+    if loc not in state["known_locs"]:
+        state["known_locs"] = sorted(state["known_locs"] + [loc])
+    _save_loc_state(state)
+    rec = {"loc": loc,
+           "ips": (hit or {}).get("ips") or [],
+           "fps": (hit or {}).get("fps") or [],
+           "since": (hit or {}).get("since"),
+           "confirmed_at": datetime.now().strftime(
+               "%Y-%m-%d %H:%M:%S")}
+    try:
+        try:
+            with open(_USUALLY_KEY_FILE, "r", encoding="utf-8") as f:
+                uk = json.load(f)
+            if not isinstance(uk, list):
+                uk = []
+        except Exception:
+            uk = []
+        uk.append(rec)
+        tmp = _USUALLY_KEY_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(uk, f, ensure_ascii=False, indent=1)
+        os.rename(tmp, _USUALLY_KEY_FILE)
+    except Exception as e:
+        print("usually-key.json write failed: %s" % e)
+    print("Confirmed location: %s (was pending: %s)" % (loc, bool(hit)))
+
+
+def _list_stranger():
+    state, _fr, _old = _load_loc_state()
+    print("known_locs:", state["known_locs"])
+    for p in state["pending"]:
+        print("pending:", p["loc"], "| since", p["since"],
+              "| ips", p["ips"])
+
+
+def _authkeys_change(auth_fps, letters=None):
+    """把本次授权指纹集合与上次运行保存的集合比对；有增删则返回告警。
+
+    状态保存在 _HOST_STATE_FILE（不在网站目录内）。首次运行只建基线、
+    不告警；每次运行都把当前集合存为新基线，所以同一次变动只报一次。"""
+    cur = {u: sorted(s) for u, s in auth_fps.items()}
+    prev = None
+    prev_letters = {}
+    try:
+        with open(_HOST_STATE_FILE, "r", encoding="utf-8") as f:
+            _state = json.load(f)
+            prev = _state.get("users")
+            prev_letters = _state.get("letters") or {}
+    except Exception:
+        prev = None
+    # 旧状态里存的是单字母标记，统一翻译成三字母代码再用（仅显示
+    # 标签受影响；增删判定只比对指纹集合，不受改名影响）。
+    _LEGACY_WHO = {"S": "SPL", "Y": "YNG", "P": "PEP",
+                   "B": "BAK", "L": "LAN"}
+    if prev_letters:
+        prev_letters = {
+            _u: {_f: _LEGACY_WHO.get(_l, _l)
+                 for _f, _l in _m.items()}
+            for _u, _m in prev_letters.items()}
+    _cur_letters = {}
+    if letters:
+        for (_u, _f), _l in letters.items():
+            _cur_letters.setdefault(_u, {})[_f] = _l
+    try:
+        tmp = _HOST_STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"users": cur, "letters": _cur_letters,
+                       "saved_at": datetime.now().strftime(
+                           "%Y-%m-%d %H:%M:%S")},
+                      f, ensure_ascii=False)
+        os.rename(tmp, _HOST_STATE_FILE)
+    except Exception:
+        pass
+    if prev is None:
+        return None
+    _add_c = {}
+    _rem_c = {}
+    _add_fps = {}
+    changed_users = []
+    for u in set(cur) | set(prev):
+        new = set(cur.get(u, []))
+        old = set(prev.get(u, []))
+        if new != old:
+            changed_users.append(u)
+            for _fp in sorted(new - old):
+                _w = (letters or {}).get((u, _fp), "⚠")
+                _add_c[_w] = _add_c.get(_w, 0) + 1
+                _add_fps.setdefault(u, []).append(_fp)
+            for _fp in sorted(old - new):
+                _w = (prev_letters.get(u) or {}).get(_fp, "⚠")
+                _rem_c[_w] = _rem_c.get(_w, 0) + 1
+    added = [{"who": w, "count": n} for w, n in sorted(_add_c.items())]
+    removed = [{"who": w, "count": n} for w, n in sorted(_rem_c.items())]
+    if not added and not removed:
+        return None
+    mt = None
+    for u in changed_users:
+        try:
+            home = pwd.getpwnam(u).pw_dir
+            t = os.path.getmtime(os.path.join(home, ".ssh", "authorized_keys"))
+            if mt is None or t > mt:
+                mt = t
+        except Exception:
+            pass
+    return {"added": added, "removed": removed,
+            "_added_fps": _add_fps,
+            "changed_at": (datetime.fromtimestamp(mt).strftime("%Y-%m-%d %H:%M")
+                           if mt else "")}
+
+
+
+def _fp_assigned(letters, user, fp):
+    """指纹在通道代码表里有真实归属（不是 ⚠）才算已识别。"""
+    code = (letters or {}).get((user, fp))
+    return bool(code) and code != "⚠"
+
+
+def _authkeys_done(added_fps, auth_fps, letters):
+    """授权密钥「新增」待办的已处理判定：每一个新增指纹，要么已不在
+    该账号的 authorized_keys 里（已被移除），要么已在通道代码表里有
+    归属（已识别），才算核对完毕。没有新增指纹（纯移除变动）时无法
+    机器核对，返回 False，不冒充已处理。"""
+    if not added_fps:
+        return False
+    for user, fps in added_fps.items():
+        cur = (auth_fps or {}).get(user, set())
+        for fp in fps:
+            if fp in cur and not _fp_assigned(letters, user, fp):
+                return False
+    return True
+
+
+def _anomaly_done(events, auth_fps, letters):
+    """异常登录待办的已处理判定：陌生密钥成功的每一个指纹都已获得
+    通道归属（已识别），才算核对完毕。密码方式成功登录没有机器可
+    核对的终态，只要出现就返回 False（待办保留）。本时段无异常时
+    返回 False（不适用）。"""
+    seen = False
+    for (_ip, user, method, ok, fp), _v in (events or {}).items():
+        if not ok:
+            continue
+        if method != "key":
+            return False
+        if fp and fp not in (auth_fps or {}).get(user, set()):
+            seen = True
+            if not _fp_assigned(letters, user, fp):
+                return False
+    return seen
+
+def _authorized_fingerprints():
+    """各登录账号 authorized_keys 里公钥的 SHA256 指纹：{user: set(fp)}。
+
+    「已知」只认密钥指纹，不认 IP、也不认登录次数：成功登录用的指纹
+    不在该账号的授权集合里，就是异常。"""
+    result = {}
+    try:
+        entries = pwd.getpwall()
+    except Exception:
+        entries = []
+    for ent in entries:
+        path = os.path.join(ent.pw_dir, ".ssh", "authorized_keys")
+        fps = set()
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                toks = line.split()
+                blob = None
+                for i, tok in enumerate(toks[:-1]):
+                    if tok in _KEY_TYPE_TOKENS:
+                        blob = toks[i + 1]
+                        break
+                if not blob:
+                    continue
+                try:
+                    raw = base64.b64decode(blob)
+                    fp = base64.b64encode(
+                        hashlib.sha256(raw).digest()).decode("ascii")
+                except Exception:
+                    continue
+                fps.add(fp.rstrip("="))
+        if fps:
+            result[ent.pw_name] = fps
+    return result
+
+
+def _authorized_key_info():
+    """各登录账号 authorized_keys 里公钥的指纹与注释：{user: {fp: comment}}。"""
+    result = {}
+    try:
+        entries = pwd.getpwall()
+    except Exception:
+        entries = []
+    for ent in entries:
+        path = os.path.join(ent.pw_dir, ".ssh", "authorized_keys")
+        keys = {}
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                toks = line.split()
+                blob = None
+                idx = None
+                for i, tok in enumerate(toks[:-1]):
+                    if tok in _KEY_TYPE_TOKENS:
+                        blob = toks[i + 1]
+                        idx = i
+                        break
+                if not blob:
+                    continue
+                try:
+                    raw = base64.b64decode(blob)
+                    fp = base64.b64encode(
+                        hashlib.sha256(raw).digest()).decode("ascii")
+                except Exception:
+                    continue
+                keys[fp.rstrip("=")] = " ".join(toks[idx + 2:])
+        if keys:
+            result[ent.pw_name] = keys
+    return result
+
+
+_KEY_HOME_NET = _net("__HOME_NET__")
+_KEY_LAN_NET = _net("__LAN_NET__")
+
+
+def _key_src_class(ip):
+    """SSH 来源的通道类别（只用于把钥匙归到使用者的字母标记）。"""
+    if ip == "__YANG_TAILSCALE_IP__":
+        return "yang"
+    if ip == "__PEPPER_TAILSCALE_IP__":
+        return "pepper"
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return "other"
+    if any(addr in n for n in _HOST_BULK_NETS):
+        return "yang"
+    if addr in _KEY_LAN_NET:
+        return "lan"
+    if addr in _KEY_HOME_NET:
+        return "home"
+    if addr.is_loopback:
+        return "local"
+    return "other"
+
+
+def _resolve_key_letters(key_info, events):
+    """把每把授权钥匙归到一个三字母代码：{(user, fp): code}。
+
+    YNG=Yang、SPL=站主、BAK=备份拉取、PEP=Pepper、LAN=局域网电脑；有授权但
+    归不到任何通道的标 ⚠。依据是钥匙注释与本时段的实际使用来源
+    （通道），与登录次数无关；已知/异常判定不走这里，仍只认指纹。"""
+    classes = {}
+    for (ip, user, method, ok, fp) in events:
+        if ok and method == "key" and fp:
+            classes.setdefault((user, fp), set()).add(_key_src_class(ip))
+    letters = {}
+    for user, fmap in key_info.items():
+        for fp, comment in fmap.items():
+            c = (comment or "").lower()
+            seen = classes.get((user, fp), set())
+            if user == "__PUSH_USER__" or "pull" in c or "backup" in c:
+                letter = "BAK"
+            elif "pepper" in c:
+                letter = "PEP"
+            elif "sunplace" in c:
+                letter = "SPL"
+            elif "yang" in c:
+                letter = "YNG"
+            elif "yang" in seen:
+                letter = "YNG"
+            elif "pepper" in seen:
+                letter = "PEP"
+            elif "lan" in seen:
+                letter = "LAN"
+            elif "home" in seen:
+                letter = "SPL"
+            else:
+                letter = "⚠"
+            letters[(user, fp)] = letter
+    return letters
+
+
+def _host_ssh_stats(start, end):
+    now = datetime.now()
+    failed = 0
+    failed_ips = Counter()
+    ok_ips = Counter()
+    events = {}
+    for line in _iter_secure_lines():
+        if " from " not in line:
+            continue
+        ts = _secure_line_ts(line, now)
+        if ts is None or not (start <= ts < end):
+            continue
+        m = _SSH_FAIL_RE.search(line)
+        if m:
+            failed += 1
+            _ip = m.group(1)
+            failed_ips[_ip] += 1
+            _em = _SSH_FAIL_EV_RE.search(line)
+            if _em:
+                _user = _em.group(2)
+                _method = "key" if _em.group(1) == "publickey" else "password"
+            else:
+                _user = "-"
+                _method = "key" if " publickey " in line else "password"
+            _host_event_add(events, _ip, _user, _method, False, ts)
+            continue
+        m = _SSH_OK_RE.search(line)
+        if m:
+            _ip = m.group(1)
+            ok_ips[_ip] += 1
+            _em = _SSH_OK_EV_RE.search(line)
+            _fp = ""
+            if _em:
+                _user = _em.group(2)
+                _method = "key" if _em.group(1) == "publickey" else "password"
+                if _method == "key" and _em.group(4):
+                    _fp = _em.group(4).rstrip("=")
+            else:
+                _user = "-"
+                _method = "key" if " publickey " in line else "password"
+            _host_event_add(events, _ip, _user, _method, True, ts, _fp)
+
+    def _known(ip):
+        if ip in _HOST_KNOWN_IPS:
+            return True
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        return any(addr in n for n in _HOST_KNOWN_NETS)
+
+    return failed, failed_ips, ok_ips, _known, events
+
+
+def _host_panel_stats(start, end):
+    ok = 0
+    failed = 0
+    ips = Counter()
+    try:
+        conn = sqlite3.connect("file:%s?mode=ro" % _PANEL_DB, uri=True)
+        try:
+            rows = conn.execute(
+                "SELECT log, addtime FROM logs WHERE type = '用户登录'")
+            for logtext, addtime in rows:
+                try:
+                    ts = datetime.strptime(addtime, "%Y-%m-%d %H:%M:%S")
+                except (TypeError, ValueError):
+                    continue
+                if not (start <= ts < end):
+                    continue
+                if "登录成功" in logtext:
+                    ok += 1
+                    m = _PANEL_IP_RE.search(logtext)
+                    if m:
+                        ips[m.group(1)] += 1
+                elif "密码错误" in logtext or "登录失败" in logtext:
+                    failed += 1
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return {"ok": ok,
+            "ok_ips": [{"ip": ip, "count": c, "known": _panel_known(ip)}
+                       for ip, c in ips.most_common()],
+            "failed": failed}
+
+
+def _host_fail2ban_stats(start, end):
+    banned_window = 0
+    paths = ["/var/log/fail2ban.log"]
+    try:
+        for name in sorted(os.listdir("/var/log")):
+            if name.startswith("fail2ban.log-") or name.startswith("fail2ban.log."):
+                paths.append(os.path.join("/var/log", name))
+    except Exception:
+        pass
+    for path in paths:
+        try:
+            if path.endswith(".gz"):
+                fh = gzip.open(path, "rt", encoding="utf-8", errors="ignore")
+            else:
+                fh = open(path, "r", encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                m = _F2B_BAN_RE.match(line)
+                if not m:
+                    continue
+                try:
+                    ts = datetime(int(m.group(1)), int(m.group(2)),
+                                  int(m.group(3)), int(m.group(4)),
+                                  int(m.group(5)), int(m.group(6)))
+                except ValueError:
+                    continue
+                if start <= ts < end:
+                    banned_window += 1
+    banned_now = 0
+    try:
+        out = subprocess.check_output(
+            ["fail2ban-client", "status", "sshd"],
+            stderr=subprocess.STDOUT, timeout=15).decode("utf-8", "ignore")
+        m = re.search(r"Currently banned:\s*(\d+)", out)
+        if m:
+            banned_now = int(m.group(1))
+    except Exception:
+        pass
+    return {"banned_now": banned_now, "banned_window": banned_window}
+
+
+def _host_waf_blocked(start, end):
+    total = 0
+    waf_dir = os.path.join(WWWLOGS_DIR, "btwaf")
+    try:
+        names = os.listdir(waf_dir)
+    except Exception:
+        return 0
+    for name in names:
+        if not name.endswith(".log"):
+            continue
+        try:
+            fh = open(os.path.join(waf_dir, name), "r",
+                      encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                m = _WAF_TS_RE.match(line)
+                if not m:
+                    continue
+                try:
+                    ts = datetime.strptime(
+                        "%s %s:%s:%s" % (m.group(1), m.group(2),
+                                         m.group(3), m.group(4)),
+                        "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+                if start <= ts < end:
+                    total += 1
+    return total
+
+
+def _host_ssh_lists(failed_ips, ok_ips, known, events, auth_fps,
+                    letters=None):
+    letters = letters or {}
+    fp_letters = {}
+    for (_u, _f), _l in letters.items():
+        if _f not in fp_letters or fp_letters[_f] == "⚠":
+            fp_letters[_f] = _l
+    """把 SSH 来源整理成看板条目（公网 IP 只查一次归属地）：
+    局域网（RFC1918、本机已知局域网段等）按 /24 合并、loc=局域网；组网（__TAILSCALE_NET__、ZeroTier __ZEROTIER_NET__）
+    逐个保留、loc=组网；环回 loc=本机；公网逐个保留、loc=归属地。
+    登录明细（events）按合并后的 IP 标签重新分组。
+    成功登录的「已知」只认密钥指纹（auth_fps）：指纹不在该账号授权集合内、
+    或密码方式成功登录，都标 anomaly；IP 基线只用于失败来源与无指纹的老日志行。"""
+    resolved = {}
+    resolved_app = {}
+
+    def _resolve(ip):
+        r = resolved.get(ip)
+        if r is not None:
+            return r
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            r = (ip, "", known(ip))
+            resolved[ip] = r
+            return r
+        if isinstance(addr, ipaddress.IPv6Address):
+            r = ((ip, "本机", known(ip)) if addr.is_loopback
+                 else (ip, None, known(ip)))
+        elif (addr in _HOST_TAILNET_NET
+                or any(addr in n for n in _HOST_ZT_NETS)):
+            r = (ip, "组网", known(ip))
+            resolved_app[ip] = ("Tailscale" if addr in _HOST_TAILNET_NET
+                                else "ZeroTier")
+        elif addr.is_loopback:
+            r = (ip, "本机", known(ip))
+        elif (any(addr in n for n in _HOST_PRIVATE_NETS)
+                or not addr.is_global
+                or any(addr in n and n.prefixlen >= 24
+                       for n in _HOST_KNOWN_NETS)):
+            net = ipaddress.ip_network(ip + "/24", strict=False)
+            r = (str(net), "局域网", known(str(net.network_address)))
+        else:
+            r = (ip, None, known(ip))
+        resolved[ip] = r
+        return r
+
+    def _bulk(label):
+        try:
+            if "/" in label:
+                addr = ipaddress.ip_network(label).network_address
+            else:
+                addr = ipaddress.ip_address(label)
+        except ValueError:
+            return None
+        for n in _HOST_BULK_NETS:
+            if addr in n:
+                return str(n)
+        return None
+
+    def _group(counter):
+        groups = {}
+        seq = []
+        for ip, c in counter.items():
+            label, loc, kn = _resolve(ip)
+            if label not in groups:
+                groups[label] = {"ip": label, "count": 0,
+                                 "known": kn, "loc": loc,
+                                 "app": resolved_app.get(ip)}
+                seq.append(label)
+            groups[label]["count"] += c
+        return groups, seq
+
+    fgroups, fseq = _group(failed_ips)
+    ogroups, oseq = _group(ok_ips)
+    egroups = {}
+    for (ip, user, method, ok, fp), (c, first, last) in events.items():
+        label, loc, kn = _resolve(ip)
+        key = (label, user, method, ok, fp)
+        e = egroups.get(key)
+        if e is None:
+            e = egroups[key] = {"ip": label, "loc": loc, "user": user,
+                                "app": resolved_app.get(ip),
+                                "method": method, "ok": ok, "known": kn,
+                                "fp": fp,
+                                "count": 0, "first": first, "last": last}
+        e["count"] += c
+        if first < e["first"]:
+            e["first"] = first
+        if last > e["last"]:
+            e["last"] = last
+
+    pubs = sorted({ip for ip, r in resolved.items() if r[1] is None})
+    if pubs:
+        locs = _geolocate(pubs)
+        for groups in (fgroups, ogroups):
+            for e in groups.values():
+                if e["loc"] is None:
+                    e["loc"] = locs.get(e["ip"], "")
+                    if not e["loc"] and e["ip"] in _GEO_FAILED:
+                        e["geo_failed"] = True
+        for e in egroups.values():
+            if e["loc"] is None:
+                e["loc"] = locs.get(e["ip"], "")
+                if not e["loc"] and e["ip"] in _GEO_FAILED:
+                    e["geo_failed"] = True
+
+    # 成功登录按密钥指纹判定：指纹 in 该账号 authorized_keys 集合才算已知；
+    # 密码方式成功、或指纹不在授权集合内，都是异常。次数不参与判定。
+    ok_judge = {}
+    for e in egroups.values():
+        if e["ok"] and e["method"] == "key" and e["fp"]:
+            e["key_known"] = e["fp"] in auth_fps.get(e["user"], set())
+            e["anomaly"] = not e["key_known"]
+            e["known"] = e["key_known"]
+        elif e["ok"] and e["method"] == "key":
+            e["key_known"] = None
+            e["anomaly"] = False
+        elif e["ok"]:
+            e["key_known"] = False
+            e["anomaly"] = True
+            e["known"] = False
+        else:
+            e["key_known"] = None
+            e["anomaly"] = False
+        e["who"] = None
+        if e["ok"] and e["method"] == "key" and e["fp"] and e.get("key_known"):
+            e["who"] = letters.get((e["user"], e["fp"]))
+        if e["ok"]:
+            j = ok_judge.setdefault(
+                e["ip"], {"fps": set(), "anomaly": False,
+                          "verified": False, "has_key": False})
+            if e["anomaly"]:
+                j["anomaly"] = True
+            if e["method"] == "key":
+                j["has_key"] = True
+            if e["method"] == "key" and e["fp"]:
+                j["fps"].add(e["fp"])
+                if e["key_known"]:
+                    j["verified"] = True
+
+    def _foreign_note(label, loc):
+        # 已知密钥在境外公网 IP 成功登录：只提示留意，不算异常。
+        if not loc or loc in ("局域网", "组网", "本机") or "/" in label:
+            return None
+        try:
+            addr = ipaddress.ip_address(label)
+        except ValueError:
+            return None
+        if not addr.is_global or _bulk(label):
+            return None
+        country = loc.split(" · ")[0]
+        return "境外" if country and country != "China" else None
+
+    for e in egroups.values():
+        e["note"] = None
+        if e["ok"] and not e["anomaly"] and e["method"] == "key":
+            e["note"] = _foreign_note(e["ip"], e["loc"])
+
+    failed_entries = sorted((fgroups[k] for k in fseq),
+                            key=lambda e: -e["count"])[:5]
+    ok_entries = sorted((ogroups[k] for k in oseq),
+                        key=lambda e: -e["count"])
+    for e in ok_entries:
+        e["bulk"] = _bulk(e["ip"])
+        j = ok_judge.get(e["ip"])
+        e["fp"] = None
+        e["who"] = None
+        e["key_known"] = None
+        e["anomaly"] = False
+        if j is not None:
+            if j["anomaly"]:
+                e["anomaly"] = True
+                e["key_known"] = False
+                e["known"] = False
+            elif j["verified"]:
+                e["key_known"] = True
+                e["known"] = True
+            if len(j["fps"]) == 1:
+                e["fp"] = next(iter(j["fps"]))[:12]
+                if not e["anomaly"]:
+                    e["who"] = fp_letters.get(next(iter(j["fps"])))
+        e["note"] = None
+        if j is not None and j.get("has_key") and not e["anomaly"]:
+            e["note"] = _foreign_note(e["ip"], e["loc"])
+    event_rows = sorted(egroups.values(), key=lambda e: -e["count"])
+    for e in ok_entries:
+        e.pop("fp", None)
+    # 对外发出的行不带指纹；用户名成功行也带（此前以「用户名是半个凭据」为由只给失败行，已废止）。
+    # 成功行去掉 fp 后按其余字段（含 user）合并：计数求和、时间取首尾。
+    merged = {}
+    mseq = []
+    for e in event_rows:
+        row = {"ip": e["ip"], "loc": e["loc"], "method": e["method"],
+               "app": e.get("app"),
+               "ok": e["ok"], "known": e["known"],
+               "key_known": e["key_known"], "anomaly": e["anomaly"],
+               "who": e.get("who"), "note": e["note"], "user": e["user"],
+               "bulk": _bulk(e["ip"]), "count": e["count"],
+               "first": e["first"], "last": e["last"]}
+        if e["ok"]:
+            mk = (row["ip"], row["loc"], row["method"], row["ok"],
+                  row["known"], row["key_known"], row["anomaly"],
+                  row["who"], row["note"], row["bulk"], row["user"])
+        else:
+            mk = ("fail", len(mseq))
+        m = merged.get(mk)
+        if m is None:
+            merged[mk] = row
+            mseq.append(mk)
+        else:
+            m["count"] += row["count"]
+            if row["first"] < m["first"]:
+                m["first"] = row["first"]
+            if row["last"] > m["last"]:
+                m["last"] = row["last"]
+    out_events = []
+    for mk in mseq:
+        r = merged[mk]
+        r["first"] = r["first"].strftime("%m-%d %H:%M")
+        r["last"] = r["last"].strftime("%m-%d %H:%M")
+        out_events.append(r)
+    out_events.sort(key=lambda e: -e["count"])
+    return (
+        [{"ip": e["ip"], "count": e["count"], "loc": e["loc"],
+          "known": e["known"], "app": e.get("app")}
+         for e in failed_entries],
+        ok_entries,
+        out_events,
+    )
+
+
+def collect_host_entry(start, end):
+    """本机（Host 1）的主机安全数据。"""
+    failed, failed_ips, ok_ips, _known, events = _host_ssh_stats(
+        start, end)
+    _key_info = _authorized_key_info()
+    _auth_fps = {u: set(fmap) for u, fmap in _key_info.items()}
+    _letters = _resolve_key_letters(_key_info, events)
+    failed_top, ok_list, ssh_events = _host_ssh_lists(
+        failed_ips, ok_ips, _known, events, _auth_fps, _letters)
+    _flag_new_ip_logins(ok_list, ssh_events)
+    _entry = {
+        "window": [start.strftime("%Y-%m-%d %H:%M"),
+                   end.strftime("%Y-%m-%d %H:%M")],
+        "ssh_failed": failed,
+        "ssh_anomaly": sum(e["count"] for e in ssh_events
+                           if e.get("anomaly")),
+        "ssh_stranger": sum(e["count"] for e in ssh_events
+                            if e.get("stranger")),
+        "ssh_failed_top": failed_top,
+        "ssh_ok": ok_list,
+        "ssh_events": ssh_events,
+        "panel": _host_panel_stats(start, end),
+        "fail2ban": _host_fail2ban_stats(start, end),
+        "waf_blocked": _host_waf_blocked(start, end),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    _entry["anomaly_done"] = _anomaly_done(events, _auth_fps, _letters)
+    _ak_alert = _authkeys_change(_auth_fps, _letters)
+    if _ak_alert:
+        _added_fps = _ak_alert.pop("_added_fps", {})
+        _entry["authkeys_alert"] = _ak_alert
+        _entry["authkeys_done"] = _authkeys_done(
+            _added_fps, _auth_fps, _letters)
+    return _entry
+
+
+def _read_host2():
+    """host 2 每日 06:30 推送到本机接收账号家目录的主机数据。"""
+    try:
+        with open(HOST2_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and "ssh_failed" in data:
+            return data
+    except Exception:
+        pass
+    return None
+
+
+# --- Security grades (AQI-style, one per view/host) -----------------------
+# The dashboard shows three grades: the website on its own tab, and each
+# host on its own accordion section. A = quiet, nothing to do; B = routine
+# noise, all blocked; C = worth a look; D = act now. The texts never
+# contain account names or key fingerprints (IPs are fine).
+# Tone rule (owner): A/B texts may be relaxed and conversational;
+# C/D texts are serious and direct — facts first, then imperatives,
+# no softeners.
+_GRADE_HOST_NAMES = {"host1": "Host 1", "host2": "Host 2"}
+
+
+def _grade_host_stale(entry, now):
+    """Mirror of the page rule: no generated_at, unparseable, or > 26 h."""
+    if not entry:
+        return True
+    raw = entry.get("generated_at")
+    if not raw:
+        return True
+    try:
+        gen = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return True
+    return (now - gen).total_seconds() > 26 * 3600
+
+
+def _alert_total(arr):
+    return sum(int(x.get("count") or 0) for x in (arr or []))
+
+
+_RESOLUTIONS_PATH = "__RESOLUTIONS_PATH__"
+
+
+def _load_resolutions():
+    try:
+        with open(_RESOLUTIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [r for r in data if isinstance(r, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _incident_resolved(inc, resolutions):
+    """需留意事件的核销判定：登记表里有同 签名+站点+发生日期 的
+    记录才算已核实处理（维护者逐起核实后登记，不自动过期到次日）。"""
+    sig = inc.get("signature")
+    site = inc.get("site")
+    day = (inc.get("first_seen") or "")[:10]
+    for r in resolutions or []:
+        if (r.get("signature") == sig and r.get("site") == site
+                and r.get("date") == day):
+            return True
+    return False
+
+
+def _record_resolution(signature, site, note):
+    """维护者核实一起需留意事件后记录核销（--resolve-incident）。"""
+    items = _load_resolutions()
+    items.append({
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "signature": signature,
+        "site": site,
+        "note": note,
+        "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    tmp = _RESOLUTIONS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=1)
+    os.rename(tmp, _RESOLUTIONS_PATH)
+    print("Recorded resolution: %s @ %s" % (signature, site))
+
+
+def _grade_web_unknown():
+    # 规则/数据不可信时网站侧写未知（页面按 zero 渲染问号卡），不参与阶梯。
+    return {"level": "A", "zero": True,
+            "what": "本时段数据未知。",
+            "action": "安全看板运行出现问题，请联系管理员。"}
+
+
+def _grade_web(result):
+    total = int(result.get("total_attack_requests") or 0)
+    attackers = result.get("attackers") or []
+    incidents = (result.get("breach") or {}).get("incidents") or []
+    warn = [i for i in incidents if i.get("verdict") == "需留意"]
+    heavy_ips = [a for a in attackers
+                 if int(a.get("count") or 0) >= _AUTOBAN_THRESHOLD]
+    heavy = len(heavy_ips)
+    # 全零就是干净的 A，不带问号、不报警；未知另走 _grade_web_unknown。
+    if total == 0 and not incidents:
+        return {"level": "A",
+                "what": "本时段他们还没起床。",
+                "action": "别急，等着看戏。"}
+    # 等级回退：需处理的问题一旦核销，等级
+    # 回退到其余事实给出的等级。核销口径：达到封禁线的 IP 已进
+    # nginx 黑名单（查 blocklist 实况）；需留意事件已在核销登记
+    # __RESOLUTIONS_PATH__ 里按 签名+站点+日期 记录
+    # （维护者核实后用 --resolve-incident 登记）。安全事件总数
+    # 不参与评级（总数只说明外面有人
+    # 探测，是公网常态而非风险本身）。
+    denied = _blocklist_denied()
+    heavy_open = sum(1 for a in heavy_ips if a.get("ip") not in denied)
+    heavy_resolved = heavy - heavy_open
+    _resolutions = _load_resolutions()
+    warn_open = [i for i in warn
+                 if not _incident_resolved(i, _resolutions)]
+    warn_resolved = len(warn) - len(warn_open)
+    # 网站侧评级：只看需留意与
+    # 封禁线，两线取最高——需留意阶梯（本时段需留意事件
+    # 总数，含已核销）：0 A、1-3 B、4-6 C、7+ D；未核销的
+    # 需留意有即 D；封禁线阶梯（达到自动封禁线且尚未封禁
+    # 的 IP 个数）：>5 B、>10 C、>15 D。安全事件总数不
+    # 参与评级（原 >10 B、>15 C、>20 D 阶梯废除）。
+    order = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+    def _by_heavy(n):
+        if n > 15:
+            return "D"
+        if n > 10:
+            return "C"
+        if n > 5:
+            return "B"
+        return "A"
+
+    def _by_warn(n):
+        if n >= 7:
+            return "D"
+        if n >= 4:
+            return "C"
+        if n >= 1:
+            return "B"
+        return "A"
+
+    pre = _by_heavy(heavy)
+    if warn_open:
+        pre = "D"
+    elif order[_by_warn(len(warn))] > order[pre]:
+        pre = _by_warn(len(warn))
+    level = _by_heavy(heavy_open)
+    if order[_by_warn(len(warn))] > order[level]:
+        level = _by_warn(len(warn))
+    if warn_open:
+        return {"level": "D",
+                "what": "安全事件中有 %d 起被判为需留意。" % len(warn_open),
+                "action": "立即处理：打开下方事件详情，逐条核对。"}
+    clauses = []
+    if heavy_open > 5:
+        clauses.append("%d 个 IP 达到自动封禁线" % heavy_open)
+    if warn:
+        clauses.append("%d 起需留意事件已核实处理" % len(warn))
+    what = "；".join(clauses) + "。" if clauses else ""
+    if level == "D":
+        if len(warn) >= 7 and heavy_open <= 15:
+            action = "无需操作。需留意事件均已核实处理，但本时段数量偏多，留意即可。"
+        else:
+            action = "立即处理：打开下方事件详情与攻击者排名，逐条核对。"
+        grade = {"level": "D", "what": what, "action": action}
+    elif level == "C":
+        if len(warn) >= 4 and heavy_open <= 10:
+            action = "无需操作。需留意事件均已核实处理，扫一眼即可。"
+        else:
+            action = "无需操作。达到封禁线的 IP 已自动封禁，扫一眼即可。"
+        grade = {"level": "C", "what": what, "action": action}
+    elif level == "B":
+        grade = {"level": "B", "what": what,
+                 "action": "无需操作。扫一眼即可。"}
+    else:
+        if incidents:
+            what = ("%d 次探测与攻击请求，%d 起事件均未得手。"
+                    % (total, len(incidents)))
+        else:
+            what = "%d 次探测与攻击请求，均被拦截（404/403）。" % total
+        grade = {"level": "A", "what": what, "action": "无需任何操作。"}
+    if (warn_resolved or heavy_resolved) and (
+            order[level] < order[pre]
+            or (warn_resolved and level == _by_warn(len(warn)))):
+        bits = []
+        if warn_resolved:
+            bits.append("%d 起需留意事件已核实" % warn_resolved)
+        if heavy_resolved:
+            bits.append("%d 个达到封禁线的 IP 已封禁" % heavy_resolved)
+        grade["done"] = True
+        grade["done_text"] = "已处理：" + "；".join(bits) + "。"
+    return grade
+
+
+def _grade_host_impl(key, entry, now):
+    if entry is None or _grade_host_stale(entry, now):
+        state = "已过期" if entry else "缺失"
+        if key == "host2":
+            action = "先确认推送是否正常。"
+        else:
+            action = "先确认本机主机数据采集是否正常。"
+        return {"level": "C",
+                "what": "数据%s，本时段情况不明。" % state,
+                "action": action}
+    anomaly = int(entry.get("ssh_anomaly") or 0)
+    alert = entry.get("authkeys_alert") or None
+    if anomaly > 0 or alert:
+        clauses, acts = [], []
+        if anomaly > 0:
+            clauses.append("出现 %d 次异常登录（陌生密钥或密码登录成功）"
+                           % anomaly)
+            acts.append("打开主机安全，核对授权密钥名单，"
+                        "确认每一把钥匙的来历")
+        if alert:
+            bits = []
+            added = _alert_total(alert.get("added"))
+            removed = _alert_total(alert.get("removed"))
+            if added:
+                bits.append("新增 %d 把" % added)
+            if removed:
+                bits.append("移除 %d 把" % removed)
+            clauses.append("授权密钥名单有变动（%s）" % "、".join(bits))
+            acts.append("确认钥匙变动是不是你本人操作；"
+                        "不是，立即移除不明钥匙")
+        grade = {"level": "D",
+                 "what": "%s。" % "；".join(clauses),
+                 "action": "立即处理：" + "；".join(acts) + "。"}
+        _done = True
+        if anomaly > 0:
+            _done = _done and entry.get("anomaly_done") is True
+        if alert:
+            _done = _done and entry.get("authkeys_done") is True
+        if _done:
+            grade["done"] = True
+            if anomaly > 0 and alert:
+                grade["done_text"] = "已处理：异常登录与密钥变动均已核对完毕。"
+            elif alert:
+                grade["done_text"] = "已处理：密钥变动已核对完毕。"
+            else:
+                grade["done_text"] = "已处理：异常登录已核对完毕。"
+        return grade
+    failed = int(entry.get("ssh_failed") or 0)
+    panel_failed = int((entry.get("panel") or {}).get("failed") or 0)
+    banned = int((entry.get("fail2ban") or {}).get("banned_window") or 0)
+    if failed >= 10 or panel_failed > 0 or banned > 0:
+        clauses, act = [], ""
+        top = (entry.get("ssh_failed_top") or [{}])[0]
+        if failed >= 10:
+            clause = "SSH 登录失败 %d 次" % failed
+            if top.get("ip"):
+                clause += "（主要来源 %s）" % top.get("ip")
+            clauses.append(clause)
+            if top.get("ip"):
+                act = ("核对 SSH 失败来源 %s 是否本人；不是本人，封禁该 IP。"
+                       % top.get("ip"))
+        if panel_failed > 0:
+            clauses.append("宝塔面板登录失败 %d 次" % panel_failed)
+            if not act:
+                act = "核对面板登录失败是否本人输错；不是，立即修改面板密码。"
+        if banned > 0:
+            clauses.append("fail2ban 本时段封禁 %d 次" % banned)
+            if not act:
+                act = "fail2ban 已自动封禁。打开下方明细，核对被封来源。"
+        return {"level": "C",
+                "what": "%s。" % "；".join(clauses),
+                "action": act or "打开下方明细，逐项核对。"}
+    stranger = int(entry.get("ssh_stranger") or 0)
+    if failed > 0 or stranger > 0:
+        whats, acts = [], []
+        if failed > 0:
+            w = "SSH 登录失败 %d 次" % failed
+            top = (entry.get("ssh_failed_top") or [{}])[0]
+            if top.get("ip"):
+                w += "（主要来源 %s）" % top.get("ip")
+            whats.append(w + "，均未成功")
+            acts.append("失败登录无需操作，只是有人试门，未得手")
+        if stranger > 0:
+            whats.append("有 %d 次已授权密钥从陌生归属地成功登录"
+                         % stranger)
+            acts.append("陌生归属地若是本人或同事的新地点，告知任一 "
+                        "Agent 即可取消标记；不认识的来源立即处理")
+        return {"level": "B", "what": "；".join(whats) + "。",
+                "action": "；".join(acts) + "。"}
+    return {"level": "A", "what": "本时段风平浪静，登录全部正常。",
+            "action": "无需任何操作。"}
+
+
+def _grade_host(key, entry, now):
+    """等级回退：主机 D 的成因（异常登录 /
+    密钥变动）全部核销时，回退到去掉这些成因后的等级（C/B/A），
+    已处理说明随档附上；未全部核销则保持 D 不变。"""
+    g = _grade_host_impl(key, entry, now)
+    if g.get("level") == "D" and g.get("done"):
+        e2 = dict(entry or {})
+        e2["ssh_anomaly"] = 0
+        e2["authkeys_alert"] = None
+        g2 = _grade_host_impl(key, e2, now)
+        g2["done"] = True
+        g2["done_text"] = g["done_text"]
+        return g2
+    return g
+
+
+def _compute_grades(result, hosts):
+    hosts = hosts or {}
+    now = datetime.now()
+    return {
+        "web": _grade_web(result),
+        "host1": _grade_host("host1", hosts.get("host1"), now),
+        "host2": _grade_host("host2", hosts.get("host2"), now),
+    }
+
+
+
+# ================= 自动封禁（单 IP 7 天内累计攻击 >=100 自动进黑名单） =================
+# 阈值与评级 C 线一致。计数口径与看板完全相同
+# （write_security_data 的 per_ip：已过滤图片请求、已排除本人/工具出口/
+# 正常爬虫、只含真实 IP）。命中后写入 nginx 的 blocklist.conf（http 级
+# deny，realip 还原真实 IP 后生效），nginx -t 通过才 reload；已在名单
+# 里的 IP 跳过（幂等），手动条目不动。状态存 __AUTOBAN_STATE_PATH__，
+# 看板 JSON 的 autobans 字段只取 7 天累计达到封禁线的记录（今天封的当天即显示）；状态文件里的封禁记录仍跨天保留。
+# 拉长只影响封禁执行：排行、统计、评级（含封禁线阶梯）仍按本时段口径，
+# 不受 7 天累计影响。
+# 本节任何异常都不得影响看板数据生成与日报邮件。
+import subprocess
+
+_AUTOBAN_THRESHOLD = 100
+_BLOCKLIST_PATH = "__BLOCKLIST_CONF__"
+_AUTOBAN_STATE_PATH = "__AUTOBAN_STATE_PATH__"
+_AUTOBAN_7D_PATH = "__AUTOBAN_7D_STATE_PATH__"
+_AUTOBAN_7D_DAYS = 7
+_NGINX_BIN = "/www/server/nginx/sbin/nginx"
+_AUTOBAN_SAFE_NETS = [ipaddress.ip_network(c) for c in _RULES["autoban_safe_nets"]]
+_LAST_AUTOBANS_NEW = []
+
+
+def _autoban_eligible(ip, count):
+    if count < _AUTOBAN_THRESHOLD:
+        return False
+    if ip in _EXCLUDE_IPS:
+        return False
+    try:
+        ipobj = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if ipobj.is_loopback or ipobj.is_link_local or ipobj.is_multicast \
+            or ipobj.is_reserved or ipobj.is_unspecified:
+        return False
+    for nets in (_EXCLUDE_NETS, _CF_NETS, _AUTOBAN_SAFE_NETS):
+        if any(ipobj in n for n in nets):
+            return False
+    return True
+
+
+def _load_autoban_state():
+    try:
+        with open(_AUTOBAN_STATE_PATH, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        if isinstance(state, list):
+            return [e for e in state if isinstance(e, dict) and e.get("ip")]
+    except Exception:
+        pass
+    return []
+
+
+def _blocklist_denied():
+    denied = set()
+    try:
+        with open(_BLOCKLIST_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"\s*deny\s+([0-9a-fA-F.:]+)\s*;", line)
+                if m:
+                    denied.add(m.group(1))
+    except Exception:
+        pass
+    return denied
+
+
+def _nginx_reload():
+    t = subprocess.run([_NGINX_BIN, "-t"], stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT)
+    if t.returncode != 0:
+        print("Autoban: nginx -t failed: %s"
+              % t.stdout.decode("utf-8", "ignore")[:300])
+        return False
+    r = subprocess.run([_NGINX_BIN, "-s", "reload"],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if r.returncode != 0:
+        print("Autoban: nginx reload failed: %s"
+              % r.stdout.decode("utf-8", "ignore")[:300])
+        return False
+    return True
+
+
+def _load_7d_state():
+    """7 天累计状态：{统计日: {ip: 当日攻击次数}}，统计日为窗口起始日。"""
+    try:
+        with open(_AUTOBAN_7D_PATH, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        if isinstance(state, dict):
+            return {k: v for k, v in state.items() if isinstance(v, dict)}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_7d_state(state):
+    try:
+        tmp = _AUTOBAN_7D_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.rename(tmp, _AUTOBAN_7D_PATH)
+    except Exception as e:
+        print("Autoban 7d: cannot save state: %s" % e)
+
+
+def _scan_day_counts(day_start, day_end):
+    """统计一个窗口日（07:00 → 次日 07:00）内各 IP 的攻击次数。
+
+    与 write_security_data 主扫描完全相同的过滤口径（图片请求、博客
+    分类页、example.com cgi-bin、白名单 IP、助手出口、良性爬虫、CF 节点
+    一律不计为攻击者），只返回 {ip: count}。仅用于回填 7 天累计状态，
+    主扫描不动。返回 (counts, ok)：扫描中途出错时 ok 为 False，调用
+    方不保存该日、下次再试。
+    """
+    per_ip = Counter()
+    try:
+        for fname in sorted(os.listdir(WWWLOGS_DIR)):
+            if not fname.endswith(".log") or fname.endswith(".error.log"):
+                continue
+            site = fname[:-4]
+            try:
+                f = open(os.path.join(WWWLOGS_DIR, fname), "r",
+                         encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            with f:
+                for line in f:
+                    m = _LOG_RE.match(line)
+                    if not m:
+                        continue
+                    ip, ts_raw, method, target, status, size_raw, ua = m.groups()
+                    ts = _parse_log_time(ts_raw)
+                    if ts is None or not (day_start <= ts < day_end):
+                        continue
+                    if _IMAGE_RE.search(target):
+                        continue
+                    if (site == "blog.example.com" and target.split("?", 1)[0] in _BLOG_EXACT_PATHS) or _TAXONOMY_RE.match(target.split("?", 1)[0]):
+                        continue
+                    if site == "example.com" and _OWN_CGI_RE.search(target.split("?", 1)[0]):
+                        continue
+                    if not _ATTACK_RE.search(target):
+                        continue
+                    if ip in _EXCLUDE_IPS:
+                        continue
+                    try:
+                        ipobj = ipaddress.ip_address(ip)
+                    except ValueError:
+                        continue
+                    if any(ipobj in n for n in _EXCLUDE_NETS):
+                        continue
+                    if _GOOD_BOT_RE.search(ua or ""):
+                        continue
+                    if any(ipobj in n for n in _CF_NETS):
+                        continue
+                    per_ip[ip] += 1
+    except Exception as e:
+        print("Autoban 7d: backfill scan failed: %s: %s"
+              % (type(e).__name__, e))
+        return dict(per_ip), False
+    return dict(per_ip), True
+
+
+def _update_7d_state(start, attackers):
+    """记下本窗口的累计次数，回填缺失的过去 6 天，剪到最近 7 天，
+    返回 7 天累计 [{"ip": ip, "count": n}]（按次数降序）。
+
+    当日条目每次用本窗口的累计值整体覆盖（不是累加），与主扫描
+    同一口径；07:00–07:29 间窗口仍是昨日，补的就是昨日的最终 24h。
+    """
+    state = _load_7d_state()
+    day_key = start.strftime("%Y-%m-%d")
+    state[day_key] = {a["ip"]: int(a.get("count") or 0)
+                      for a in (attackers or []) if a.get("ip")}
+    for back in range(1, _AUTOBAN_7D_DAYS):
+        d = start - timedelta(days=back)
+        k = d.strftime("%Y-%m-%d")
+        if k not in state:
+            counts, ok = _scan_day_counts(d, d + timedelta(days=1))
+            if ok:
+                state[k] = counts
+    cutoff = (start - timedelta(days=_AUTOBAN_7D_DAYS - 1)).strftime("%Y-%m-%d")
+    state = {k: v for k, v in state.items() if k >= cutoff}
+    _save_7d_state(state)
+    sums = Counter()
+    for day in state.values():
+        for ip, c in day.items():
+            sums[ip] += int(c or 0)
+    return [{"ip": ip, "count": c} for ip, c in sums.most_common()]
+
+
+def _apply_autobans(attackers):
+    """返回 (autobans 全量状态, 本次新增列表)。失败时不抛异常。"""
+    state = _load_autoban_state()
+    state_ips = {e["ip"] for e in state}
+    denied = _blocklist_denied()
+    today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new = []
+    for a in attackers or []:
+        ip = a.get("ip")
+        cnt = a.get("count") or 0
+        if not ip or ip in denied or ip in state_ips:
+            continue
+        if not _autoban_eligible(ip, cnt):
+            continue
+        new.append({"ip": ip, "count": cnt, "at": today})
+    if not new:
+        return state, []
+    try:
+        with open(_BLOCKLIST_PATH, "r", encoding="utf-8") as f:
+            original = f.read()
+    except Exception as e:
+        print("Autoban: cannot read blocklist: %s" % e)
+        return state, []
+    try:
+        with open(_BLOCKLIST_PATH, "a", encoding="utf-8") as f:
+            for b in new:
+                f.write("# auto-ban %s: %d attack requests in 7 days\n"
+                        % (b["at"], b["count"]))
+                f.write("deny %s;\n" % b["ip"])
+    except Exception as e:
+        print("Autoban: cannot write blocklist: %s" % e)
+        return state, []
+    if not _nginx_reload():
+        # 配置没通过或没生效：还原名单文件，不留下未生效的条目。
+        try:
+            with open(_BLOCKLIST_PATH, "w", encoding="utf-8") as f:
+                f.write(original)
+        except Exception:
+            pass
+        return state, []
+    state = state + new
+    try:
+        tmp = _AUTOBAN_STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.rename(tmp, _AUTOBAN_STATE_PATH)
+    except Exception as e:
+        print("Autoban: cannot save state: %s" % e)
+    print("Autoban: added %s"
+          % ", ".join("%s (%d)" % (b["ip"], b["count"]) for b in new))
+    return state, new
+
+
+def _parse_ban_time(s):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(str(s or ""), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _window_autobans(state, attackers, window_start, window_end):
+    """看板只显示本统计时段内新封的 IP：
+    封禁时间落在当前统计时段 [07:00, 运行时刻] 内的才显示；此前
+    时段封的本时段不再出现（封禁本身仍在 nginx 黑名单里永久生效，
+    状态文件里的记录也仍跨天保留）。手动封禁的 IP 不在此列——全量
+    名单在 nginx blocklist.conf 里。"""
+    heavy = {}
+    for a in (attackers or []):
+        ip = a.get("ip")
+        cnt = int(a.get("count") or 0)
+        if ip and cnt >= _AUTOBAN_THRESHOLD:
+            heavy[ip] = cnt
+    out = []
+    for e in (state or []):
+        if e.get("ip") not in heavy:
+            continue
+        ban_dt = _parse_ban_time(e.get("at"))
+        if ban_dt is None:
+            continue
+        # 上限放宽 10 分钟：本轮新封的 IP，其 at 是封禁执行时刻，
+        # 比本轮开始时算出的 window_end 晚几秒，须含进来。
+        if window_start <= ban_dt < window_end + timedelta(minutes=10):
+            out.append(e)
+    return out
+
+
+def write_security_data():
+    start, end = _security_window()
+    result = {
+        "window_start": start.strftime("%Y-%m-%d %H:%M"),
+        "window_end": end.strftime("%Y-%m-%d %H:%M"),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_attack_requests": 0,
+        "via_cf_edges": 0,
+        "distinct_attacker_ips": 0,
+        "top_target_site": None,
+        "site_stats": [],
+        "breach": {"suspected": False, "count": 0, "incidents": []},
+        "attackers": [],
+    }
+    try:
+        if not _RULES_OK:
+            raise ValueError("dashboard rules unknown")
+        per_ip = {}
+        site_totals = Counter()
+        all_site_totals = Counter()
+        candidates = []
+        home_sizes = {}
+        follow_index = {}
+        total = 0
+        via_cf = 0
+        for fname in sorted(os.listdir(WWWLOGS_DIR)):
+            if not fname.endswith(".log") or fname.endswith(".error.log"):
+                continue
+            site = fname[:-4]
+            try:
+                f = open(os.path.join(WWWLOGS_DIR, fname), "r",
+                         encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            with f:
+                for line in f:
+                    m = _LOG_RE.match(line)
+                    if not m:
+                        continue
+                    ip, ts_raw, method, target, status, size_raw, ua = m.groups()
+                    ts = _parse_log_time(ts_raw)
+                    if ts is None or not (start <= ts < end):
+                        continue
+                    if (method == "GET" and status == "200"
+                            and target in ("/", "/index.html")):
+                        home_sizes.setdefault(site, Counter())[size_raw] += 1
+                    # 图片请求直接跳过：老图外链、抓图机器人等正常
+                    # 请求的路径常带 wp-content 等特征，会被误判。
+                    if _IMAGE_RE.search(target):
+                        continue
+                    # 博客分类/标签页同理：名字里带 wordpress 等词的
+                    # 本站内容页不是攻击（Claude-SearchBot 抓 /tags/wordpress/ 误报）。
+                    if (site == "blog.example.com" and target.split("?", 1)[0] in _BLOG_EXACT_PATHS) or _TAXONOMY_RE.match(target.split("?", 1)[0]):
+                        continue
+                    # example.com 的 cgi-bin 路径同理：纯静态站没有 CGI
+                    # 程序，命中的只是水印工具自带目录的公开文件。
+                    if site == "example.com" and _OWN_CGI_RE.search(target.split("?", 1)[0]):
+                        continue
+                    if not _ATTACK_RE.search(target):
+                        continue
+                    if ip in _EXCLUDE_IPS:
+                        continue
+                    try:
+                        ipobj = ipaddress.ip_address(ip)
+                    except ValueError:
+                        continue
+                    if any(ipobj in n for n in _EXCLUDE_NETS):
+                        continue
+                    if _GOOD_BOT_RE.search(ua or ""):
+                        continue
+                    total += 1
+                    # CMS 后台（/md/、/api/）单独成站，与站点前台分开计数、
+                    # 分开归属（事件与攻击者的站点标注同样用 eff_site）。
+                    eff_site = site
+                    if site == "blog.example.com":
+                        _path = target.split("?", 1)[0]
+                        if (_path == "/md" or _path.startswith("/md/")
+                                or _path == "/api" or _path.startswith("/api/")):
+                            eff_site = "blog-cms"
+                    # 全来源按站计数（含经 Cloudflare 节点转发的攻击）：
+                    # 回答「哪些站被打了」，与攻击者是谁无关。
+                    all_site_totals[eff_site] += 1
+                    follow_index.setdefault(target, []).append((ts, status))
+                    is_cf = any(ipobj in n for n in _CF_NETS)
+                    if status not in ("404", "403"):
+                        try:
+                            size_val = int(size_raw)
+                        except (TypeError, ValueError):
+                            size_val = None
+                        candidates.append({
+                            "ts": ts, "ip": ip, "site": eff_site, "method": method,
+                            "target": target, "status": status, "size": size_val,
+                            "via_cf": is_cf, "raw": line.strip()[:300],
+                        })
+                    if is_cf:
+                        # 真实 IP 还原（2026-11-21 15:55）之前的 Cloudflare 节点，
+                        # 或无法归属的来源：只计总数，不列为攻击者。
+                        via_cf += 1
+                        continue
+                    entry = per_ip.get(ip)
+                    if entry is None:
+                        entry = per_ip[ip] = {
+                            "count": 0, "sites": Counter(),
+                            "paths": Counter(), "first": ts, "last": ts,
+                        }
+                    entry["count"] += 1
+                    entry["sites"][eff_site] += 1
+                    entry["paths"][target] += 1
+                    site_totals[eff_site] += 1
+                    if ts < entry["first"]:
+                        entry["first"] = ts
+                    if ts > entry["last"]:
+                        entry["last"] = ts
+        incidents = _build_incidents(candidates, home_sizes, follow_index)
+        ordered = sorted(per_ip.items(), key=lambda kv: -kv[1]["count"])
+        locs = _geolocate([ip for ip, _ in ordered])
+        attackers = []
+        for ip, e in ordered:
+            top = e["paths"].most_common(10)
+            attackers.append({
+                "ip": ip,
+                "location": locs.get(ip, ""),
+                "count": e["count"],
+                "sites": dict(e["sites"].most_common()),
+                "top_paths": [{"path": p, "count": c} for p, c in top],
+                "top_paths_more": max(0, len(e["paths"]) - len(top)),
+                "first_seen": e["first"].strftime("%Y-%m-%d %H:%M:%S"),
+                "last_seen": e["last"].strftime("%Y-%m-%d %H:%M:%S"),
+            })
+        # 已核销的需留意事件在数据里打标，前台卡片据此显示
+        # 「✓ 已处理」——核销状态不再只体现在评级卡上。
+        _res = _load_resolutions()
+        for _inc in incidents:
+            if _incident_resolved(_inc, _res):
+                _inc["resolved"] = True
+                for _r in _res:
+                    if (_r.get("signature") == _inc.get("signature")
+                            and _r.get("site") == _inc.get("site")
+                            and _r.get("date")
+                            == (_inc.get("first_seen") or "")[:10]):
+                        _inc["resolution_note"] = _r.get("note") or ""
+                        break
+        result.update({
+            "total_attack_requests": total,
+            "via_cf_edges": via_cf,
+            "distinct_attacker_ips": len(attackers),
+            "top_target_site": (site_totals.most_common(1)[0][0]
+                                if site_totals else None),
+            "site_stats": [
+                {"site": s, "count": c}
+                for s, c in sorted(all_site_totals.items(),
+                                    key=lambda kv: (-kv[1], kv[0]))
+            ],
+            "breach": {
+                "suspected": len(candidates) > 0,
+                "count": len(candidates),
+                "incidents": incidents,
+            },
+            "attackers": attackers,
+        })
+        if via_cf > 0:
+            result["note"] = (
+                "本时段有 %d 条攻击请求的来源是 Cloudflare 节点 IP"
+                "（真实 IP 还原于 2026-11-21 15:55 才开启），"
+                "无法归属到真实攻击者，未列入下表。" % via_cf
+            )
+    except Exception as e:
+        result["error"] = "%s: %s" % (type(e).__name__, e)
+    hosts = {}
+    try:
+        _hs, _he = _host_window()
+        hosts["host1"] = collect_host_entry(_hs, _he)
+    except Exception as e:
+        print("Host data (host1) failed: %s: %s" % (type(e).__name__, e))
+    _host2_data = _read_host2()
+    if _host2_data is not None:
+        hosts["host2"] = _host2_data
+    if hosts:
+        result["hosts"] = hosts
+    try:
+        result["grades"] = _compute_grades(result, hosts)
+    except Exception as e:
+        print("Grades failed: %s: %s" % (type(e).__name__, e))
+    if not _RULES_OK or "error" in result:
+        # 规则不可信或扫描失败：网站侧写未知，不参与评级。
+        g = result.get("grades")
+        if not isinstance(g, dict):
+            g = {}
+            result["grades"] = g
+        g["web"] = _grade_web_unknown()
+        result["unknown"] = True
+    # 封禁口径 7 天累计；排行、统计、评级仍用本时段。
+    # 规则不可信时不更新 7 天状态（空数据会覆盖当日计数），
+    # 但封禁不停——封禁写 nginx 黑名单、不依赖看板 JSON，
+    # 按已有 7 天累计（过去可信数据）继续执行，只拦公网 IP，
+    # 内网/组网地址永不封（安全底线，与规则配置无关）。
+    if not _RULES_OK:
+        try:
+            _sums = Counter()
+            for _day in _load_7d_state().values():
+                for _ip, _c in _day.items():
+                    _sums[_ip] += int(_c or 0)
+            # __TAILSCALE_NET__（组网/CGNAT，Python 3.6 的 is_private 不认）与
+            # __LAN_NET__（站主局域网，不在 RFC1918 内）永不封。
+            _never_ban = (_net("__TAILSCALE_NET__"),
+                          _net("__LAN_NET__"))
+            _ban_src = []
+            for _ip, _c in _sums.most_common():
+                try:
+                    _o = ipaddress.ip_address(_ip)
+                except ValueError:
+                    continue
+                if (_o.is_private or _o.is_loopback or _o.is_link_local
+                        or _o.is_multicast or _o.is_reserved
+                        or _o.is_unspecified
+                        or any(_o in _n for _n in _never_ban)):
+                    continue
+                _ban_src.append({"ip": _ip, "count": _c})
+            _ab_all, _ab_new = _apply_autobans(_ban_src)
+            result["autobans"] = _window_autobans(_ab_all, _ban_src, start, end)
+            _LAST_AUTOBANS_NEW[:] = _ab_new
+        except Exception as e:
+            print("Autoban failed: %s: %s" % (type(e).__name__, e))
+            try:
+                result["autobans"] = _window_autobans(
+                    _load_autoban_state(), [], start, end)
+            except Exception:
+                result["autobans"] = []
+    else:
+        try:
+            _seven = _update_7d_state(start, result.get("attackers", []))
+        except Exception as e:
+            print("Autoban 7d failed: %s: %s" % (type(e).__name__, e))
+            _seven = None
+        try:
+            _ban_src = _seven if _seven is not None else result.get("attackers", [])
+            _ab_all, _ab_new = _apply_autobans(_ban_src)
+            result["autobans"] = _window_autobans(_ab_all, _ban_src, start, end)
+            _LAST_AUTOBANS_NEW[:] = _ab_new
+        except Exception as e:
+            print("Autoban failed: %s: %s" % (type(e).__name__, e))
+            result["autobans"] = _window_autobans(
+                _load_autoban_state(), result.get("attackers", []), start, end)
+    out = str(dashboard_report_path())
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    os.chmod(tmp, 0o644)
+    try:
+        import pwd
+        import grp
+        os.chown(tmp, pwd.getpwnam("www").pw_uid, grp.getgrnam("www").gr_gid)
+    except Exception:
+        pass
+    os.rename(tmp, out)
+    print("Security data written: %s" % out)
+
+
+if __name__ == "__main__":
+    import fcntl
+    import sys
+
+    with open("/root/.dashboard-init.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if sys.argv[1:] == ["--rotate-dashboard-key"]:
+            rotate_dashboard_key()
+        elif len(sys.argv) == 3 and sys.argv[1] == "--confirm-location":
+            _confirm_location(sys.argv[2])
+        elif sys.argv[1:] == ["--list-stranger"]:
+            _list_stranger()
+        elif len(sys.argv) == 5 and sys.argv[1] == "--resolve-incident":
+            _record_resolution(sys.argv[2], sys.argv[3], sys.argv[4])
+        elif not sys.argv[1:]:
+            daily_report()
+        else:
+            sys.exit("Unsupported arguments")

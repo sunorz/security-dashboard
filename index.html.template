@@ -1,0 +1,2036 @@
+<!DOCTYPE html>
+<html lang="zh" translate="no">
+<head>
+<meta name="google" content="notranslate">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>安全日志</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f3ee;
+    --surface: #fffdf8;
+    --text: #221e1a;
+    --muted: #6e665b;
+    --border: #e1dacd;
+    --th-bg: #ece5d5;
+    --th-text: #221e1a;
+    --zebra: #f3efe7;
+    --hl: #f1ebdf;
+    --ok-bg: #e6f4ea;
+    --ok-border: #34a853;
+    --ok-text: #14532d;
+    --bad-bg: #fdecea;
+    --bad-border: #d93025;
+    --bad-text: #7a1c14;
+    --done-bg: #fdf3d7;
+    --done-border: #c9930a;
+    --done-text: #6e5200;
+    --warn-bg: #faf3d7;
+    --warn-text: #7a5c00;
+    --bar: rgba(91, 123, 165, 0.5);
+    --accent: #5b7ba5;
+    --accent-ink: #ffffff;
+    --accent-tint: rgba(91, 123, 165, 0.13);
+    --glass: rgba(255, 253, 248, 0.88);
+    --accent-tint2: rgba(91, 123, 165, 0.24);
+    --accent-line: rgba(91, 123, 165, 0.5);
+    --ga: #34a853; --gb: #f2c018; --gc: #cf1f14; --gd: #191919;
+    --ga-t: rgba(52, 168, 83, 0.12); --gb-t: rgba(242, 192, 24, 0.15);
+    --gc-t: rgba(207, 31, 20, 0.12); --gd-t: rgba(25, 25, 25, 0.08);
+    --ga-ink: #1e7a3c; --gb-ink: #93700a; --gc-ink: #b01a10; --gd-ink: #26221d;
+    --seg-bg: rgba(255, 255, 255, 0.65);
+    --tag-sun-bg: #eee42b; --tag-sun-ink: #000000;
+    --tag-yan-bg: #6b74f3; --tag-yan-ink: #ffffff;
+    --tag-pep-bg: #da2bee; --tag-pep-ink: #ffffff;
+    --tag-bak-bg: #2be7ee; --tag-bak-ink: #000000;
+    --tag-lan-bg: #2bee45; --tag-lan-ink: #000000;
+    --tag-fff-bg: #ef4538; --tag-fff-ink: #ffffff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --radius-card: 14px;
+    --radius-sm: 8px;
+    --radius-xs: 3px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171410;
+      --surface: #211e19;
+      --text: #ede8e0;
+      --muted: #a79c8e;
+      --border: #474037;
+      --th-bg: #2e2a23;
+      --th-text: #ede8e0;
+      --zebra: #27231e;
+      --hl: #2a251e;
+      --ok-bg: #17351f;
+      --ok-border: #34a853;
+      --ok-text: #a3d9b1;
+      --bad-bg: #3f2320;
+      --bad-border: #d93025;
+      --bad-text: #f2b8b0;
+      --done-bg: #3a3010;
+      --done-border: #c9930a;
+      --done-text: #f2d38a;
+      --warn-bg: #3d3417;
+      --warn-text: #f2c018;
+      --bar: rgba(125, 153, 189, 0.5);
+      --accent: #7d99bd;
+      --accent-ink: #ffffff;
+      --accent-tint: rgba(125, 153, 189, 0.18);
+      --glass: rgba(33, 30, 25, 0.88);
+      --accent-tint2: rgba(125, 153, 189, 0.30);
+      --accent-line: rgba(125, 153, 189, 0.55);
+      --ga: #34a853; --gb: #f2c018; --gc: #d92b1f; --gd: #141414;
+      --ga-t: rgba(52, 168, 83, 0.18); --gb-t: rgba(242, 192, 24, 0.20);
+      --gc-t: rgba(217, 43, 31, 0.20); --gd-t: rgba(201, 194, 180, 0.08);
+      --ga-ink: #34a853; --gb-ink: #f2c018; --gc-ink: #e8705f; --gd-ink: #c9c2b4;
+      --seg-bg: rgba(255, 255, 255, 0.07);
+      --tag-sun-bg: #6f6a09; --tag-sun-ink: #ffffff;
+      --tag-yan-bg: #0b148e; --tag-yan-ink: #ffffff;
+      --tag-pep-bg: #810b8e; --tag-pep-ink: #ffffff;
+      --tag-bak-bg: #0a7275; --tag-bak-ink: #ffffff;
+      --tag-lan-bg: #0a7718; --tag-lan-ink: #ffffff;
+      --tag-fff-bg: #8e140b; --tag-fff-ink: #ffffff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 56px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Non-clickable parts of the board (text, numbers, images) are not
+     selectable; clickable controls keep the default behaviour. */
+  button, summary, .gbar, .gfish {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .page-footer { text-align: center; color: var(--muted); font-size: 12px; padding: 28px 0 4px; }
+  /* Page header lockup: shield disc + title + subtitle, one unit with the tab bar */
+  .phead { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
+  .pdisc {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .pdisc .ic { width: 20px; height: 20px; vertical-align: 0; }
+  .ptxt { flex: 1; min-width: 0; }
+  h1 { font-size: 21px; font-weight: 600; line-height: 1.25; margin: 0; letter-spacing: .01em; color: var(--text); }
+  /* Tier 4: window range / generated-at line */
+  .sub { color: var(--muted); font-size: 12px; line-height: 1.8; margin: 4px 0 0; min-height: 3.6em; }
+  .ic {
+    width: 16px; height: 16px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+    vertical-align: -3px;
+  }
+  /* Tier 0 is the grade card (see .grade below); there is no separate banner. */
+  /* Tier 1: KPI strip */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px 12px;
+    margin: 16px 0 24px;
+  }
+  .kpi {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-areas: "disc num" "disc lab";
+    align-items: center;
+    column-gap: 12px;
+    padding: 16px;
+  }
+  .kdisc {
+    grid-area: disc;
+    align-self: center;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kdisc .ic { width: 20px; height: 20px; vertical-align: 0; }
+  .kdisc.danger { background: var(--bad-bg); }
+    :is(.kdisc,.hdot.web-status).danger { color: var(--bad-text); }
+  .kdisc.warn { background: var(--warn-bg); }
+    :is(.kdisc,.hdot.web-status).warn { color: var(--warn-text); }
+    :is(.kdisc,.hdot.web-status).ok { color: var(--ok-text); }
+  .kpi .kn {
+    grid-area: num;
+    font-size: 29px; font-weight: 600; line-height: 1.12;
+    font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  .kpi .kn.danger { color: var(--bad-text); }
+  .kpi .kl { grid-area: lab; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .kpi .kl .kd { color: var(--bad-text); font-weight: 700; }
+  /* Tier 2: section titles with icon disc */
+  .t2 {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 16px; font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .tdisc {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .tdisc .ic { width: 16px; height: 16px; vertical-align: 0; }
+  .incidents { margin-bottom: 24px; }
+  .incident {
+    border-top: 1px solid var(--border);
+    padding: 16px 4px 12px;
+    margin-bottom: 12px;
+  }
+  .incident:first-child { border-top: 0; padding-top: 2px; }
+  .incident .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .incident .title { font-weight: 600; font-size: 16px; }
+  .badge {
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid;
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .badge.ok  { background: var(--ok-bg);  border-color: var(--ok-border);  color: var(--ok-text); }
+  .badge.warn { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+  .badge.done { background: var(--done-bg); border-color: var(--done-border); color: var(--done-text); }
+  .incident dl { margin: 0; font-size: 14px; line-height: 1.6; }
+  .incident .row { display: flex; gap: 8px; margin: 8px 0; }
+  .incident dt { flex: 0 0 92px; color: var(--accent); font-size: 13px; padding-top: 2px; white-space: nowrap; }
+  .incident dd { margin: 0; flex: 1; min-width: 0; }
+  .incident .duel { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .incident .resolved { margin-top: 10px; font-size: 13px; color: var(--done-text); }
+  .incident .bub { position: relative; max-width: min(88%, 29rem); padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.6; }
+  .incident .bub.atk { --bubble-bg: #e9e4db; align-self: flex-start; background: var(--bubble-bg); border-bottom-left-radius: 0; }
+  .incident .bub.def { --bubble-bg: #f4bdd4; align-self: flex-end; background: var(--bubble-bg); color: var(--text); border-bottom-right-radius: 0; max-width: min(88%, 30rem); }
+  /* Borderless Telegram-style tails: the SVG baseline meets the bubble
+     bottom exactly, with a 1px fill overlap across the side seam. */
+  .incident .btail { position: absolute; bottom: 0; width: 10px; height: 18px; display: block; overflow: visible; pointer-events: none; }
+  .incident .bub.atk .btail { left: -9px; }
+  .incident .bub.def .btail { right: -9px; }
+  .incident .btail .corner { fill: var(--bubble-bg); }
+  @media (prefers-color-scheme: dark) {
+    .incident .bub.atk { --bubble-bg: #222b36; }
+    .incident .bub.def { --bubble-bg: #8b3f62; color: #ffffff; }
+  }
+  .incident .tgrid { display: grid; grid-template-columns: repeat(2, 1fr); column-gap: 16px; row-gap: 4px; }
+  @media (min-width: 720px) { .incident .tgrid { grid-template-columns: repeat(4, 1fr); } }
+  .incident .tcell { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .incident .tgrid i { font-style: normal; color: var(--muted); font-size: 12px; flex: none; }
+  .incident .tgrid .tv { font-variant-numeric: tabular-nums; }
+  .incident .srcgrid { display: grid; grid-template-columns: minmax(15ch, 1.2fr) minmax(0, 1fr); column-gap: 8px; row-gap: 3px; align-items: center; }
+  .incident .source-location { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .incident .sip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .incident .srcnote { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  @media (max-width: 640px) {
+    .incident .row { flex-direction: column; gap: 4px; margin: 8px 0; }
+    .incident dt { flex: none; padding-top: 0; }
+  }
+  /* Tier 4: generator note */
+  .note {
+    border-left: 3px solid var(--border);
+    padding: 8px 0 8px 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+  .sitestats {
+    padding: 0 4px;
+    margin-bottom: 24px;
+  }
+  /* Colophon in the emptied ranking slot (zero state): icon source and
+     swimming-curve references in the nightsky (example.com) citation
+     format, typeset like the statistics-period line. */
+  .xrefs { font-size: 12px; line-height: 1.8; color: var(--muted); margin: 0 0 24px; word-break: break-word; }
+  .xrefs .xh { margin: 14px 0 2px; font-weight: 700; }
+  .xrefs .xh:first-child { margin-top: 0; }
+  .xrefs p { margin: 0 0 6px; }
+  .ss-row { display: grid; grid-template-columns: max-content minmax(24px, 1fr) max-content; align-items: center; gap: 12px; padding: 8px 0; font-size: 14px; }
+  .ss-site {
+    font-family: var(--mono);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .ss-track {
+    height: 10px;
+    background: var(--zebra);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .ss-bar { display: block; height: 100%; background: var(--bar); border-radius: 999px; }
+  .ss-count {
+    text-align: right;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Shared chart axis: the stats block is one grid and each row is a
+     subgrid of it, so the label column is sized ONCE by the longest
+     label in the group -- every bar starts on the same left edge and
+     every count on the same right edge. Browsers without subgrid
+     keep the per-row grid above (labels fit, bars may offset). */
+  @supports (grid-template-columns: subgrid) {
+    .sitestats {
+      display: grid;
+      grid-template-columns: max-content minmax(24px, 1fr) max-content;
+      column-gap: 12px;
+    }
+    .sitestats .t2 { grid-column: 1 / -1; }
+    .ss-row { grid-template-columns: subgrid; grid-column: 1 / -1; }
+  }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; line-height: 1.55; }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--th-bg);
+    color: var(--th-text);
+    text-align: left;
+    padding: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  tbody td { padding: 12px; border-top: 1px solid var(--border); vertical-align: top; }
+  tbody tr:nth-child(even) { background: var(--zebra); }
+  td.rank, td.count { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .medal-img { width:20px; height:auto; vertical-align:-11px; margin-right:5px; }
+  th.count { text-align: right; }
+  td.count { font-weight: 700; }
+  .mono { font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  .paths { font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  .aban-rows { font-size: 14px; line-height: 1.7; }
+  .aban-rows > div { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .aban-rows > div:last-child { border-bottom: 0; }
+  .aban-rows .mono { min-width: 0; word-break: break-all; }
+  .aban-rows .more { margin-left: auto; text-align: right; color: var(--muted); opacity: .65; }
+  .paths div, .sites div { margin: 4px 0; }
+  .more { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; line-height: 1.6; padding: 12px 4px; }
+  .acards { display: none; }
+  .acard {
+    border-top: 1px solid var(--border);
+    padding: 16px;
+    margin-bottom: 8px;
+  }
+  .acard:first-child { border-top: 0; }
+  .acard-head { display: flex; align-items: baseline; gap: 8px; }
+  .acard-top.has-medal { display: grid; grid-template-columns: 24px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+  .acard-top.has-medal .medal-img { grid-row: 1 / span 2; margin-right: 0; vertical-align: middle; }
+  .acard-top.has-medal .acard-head { grid-column: 2; grid-row: 1; }
+  .acard-top.has-medal .acard-loc { grid-column: 2; grid-row: 2; margin: 2px 0 0; }
+  .acard-rank { font-weight: 700; color: var(--muted); }
+  .acard-ip { flex: 1; min-width: 0; }
+  .acard-count { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .acard-loc { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .acard-row { display: flex; align-items: baseline; gap: 8px; margin: 8px 0; font-size: 14px; line-height: 1.55; }
+  .acard-row .sites div:first-child { margin-top: 0; }
+  .acard-k { flex: 0 0 76px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .acard-v { flex: 1; min-width: 0; }
+  .acard-det {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 0 12px;
+  }
+  .acard-det summary {
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    padding: 12px 0; min-height: 48px;
+    display: flex; align-items: center; gap: 8px;
+    border-radius: var(--radius-sm);
+  }
+  .acard-det .paths { margin: 8px 0 12px; }
+  /* Incident source IPs: dropdown like the mobile 主要攻击地址 card */
+  .src-det { margin-top: 4px; }
+  .src-det summary {
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    padding: 8px 0; min-height: 44px;
+    display: flex; align-items: center; gap: 8px;
+    border-radius: var(--radius-sm);
+  }
+  .src-det .srcgrid { margin: 8px 0 4px; }
+  /* Big view tabs: frosted glass sticky bar */
+  .vtabs {
+    display: flex;
+    gap: 8px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(12px) saturate(1.3);
+    backdrop-filter: blur(12px) saturate(1.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 4px;
+    margin-bottom: 24px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .07);
+  }
+  .vtabs button {
+    flex: 1;
+    min-height: 48px;
+    padding: 12px;
+    font-size: 17px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .vtabs button .ic { width: 18px; height: 18px; vertical-align: 0; }
+  .vtabs button.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-weight: 700;
+    border-color: var(--accent-line);
+  }
+  .vtabs button:active { background: var(--accent-tint2); }
+  /* Host accordion */
+  .hacc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .hacc > summary {
+    cursor: pointer; padding: 16px; min-height: 48px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hacc[open] > summary { background: var(--accent-tint); }
+  /* Affordance signifiers: one chevron system for every expandable row */
+  .hacc > summary, .hdet summary, .acard-det summary, .aban-det summary, .src-det summary { list-style: none; }
+  .hacc > summary::-webkit-details-marker,
+  .hdet summary::-webkit-details-marker,
+  .acard-det summary::-webkit-details-marker,
+  .aban-det summary::-webkit-details-marker,
+  .src-det summary::-webkit-details-marker { display: none; }
+  .chev {
+    margin-left: auto; flex: none;
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--accent);
+    transition: transform .18s ease;
+  }
+  .chev .ic { width: 16px; height: 16px; vertical-align: 0; }
+  details[open] > summary .chev { transform: rotate(180deg); }
+  .hacc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1; min-width: 0; }
+  .hdisc {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .hacc[open] .hdisc { background: var(--surface); }
+  .hdisc .ic { width: 16px; height: 16px; vertical-align: 0; }
+  .hacc-name { font-size: 16px; font-weight: 600; }
+  .hacc[open] .hacc-name { color: var(--accent); }
+  .hdot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-border); flex: none; }
+  .hdot.bad { background: var(--bad-border); }
+  .hdot.warn { background: #d9a514; }
+  .hdot.web-status { background: currentColor; }
+    .hdot.stale { background: var(--muted); opacity: .45; }
+  .hacc-sum { color: var(--muted); font-size: 13px; }
+  @media (max-width: 719px) {
+    .hacc-sum { flex-basis: 100%; padding-left: 40px; }
+  }
+  .hstale { color: var(--muted); font-size: 12px; }
+  .hacc-body { padding: 16px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.6; }
+  .hrow { display: flex; gap: 8px; margin: 8px 0; }
+  .hrow .hk {
+    flex: 0 0 108px; color: var(--muted); font-size: 13px;
+    padding-top: 3px; white-space: nowrap;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hrow .hk .ic { width: 16px; height: 16px; vertical-align: 0; }
+  .hrow .hv { flex: 1; min-width: 0; }
+  .hip { display: flex; align-items: center; column-gap: 6px; margin: 4px 0; }
+  .hip > .more { min-width: 0; }
+  .hip .mono, .hip .who, .hip .anom, .hip .unk, .hip .okb, .hip .mchip { flex: none; }
+  .hip .who { margin-left: auto; }
+  /* Tier 4: per-host window / generated-at */
+  .hmeta { color: var(--muted); font-size: 12px; margin-top: 16px; }
+  .hsub {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 16px; font-weight: 600;
+    margin: 24px 0 12px;
+  }
+  .hdet {
+    margin: 12px 0;
+    background: var(--zebra);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 0 12px;
+  }
+  .hdet summary {
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    padding: 12px 0; min-height: 48px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px;
+    border-radius: var(--radius-sm);
+  }
+  .hdet[open] summary { border-bottom: 1px solid var(--border); }
+  .hdet .hip { margin: 10px 0 10px 12px; flex-wrap: wrap; row-gap: 3px; column-gap: 10px; line-height: 1.65; }
+  .anom {
+    background: var(--bad-bg);
+    border: 1px solid transparent;
+    color: var(--bad-text);
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .unk {
+    background: var(--warn-bg);
+    border: 1px solid transparent;
+    color: var(--warn-text);
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .who {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    margin-left: 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+    --tag-bg: var(--hl);
+    --tag-ink: var(--text);
+    color: var(--tag-ink);
+  }
+  .who.c-sun { --tag-bg: var(--tag-sun-bg); --tag-ink: var(--tag-sun-ink); }
+  .who.c-yan { --tag-bg: var(--tag-yan-bg); --tag-ink: var(--tag-yan-ink); }
+  .who.c-pep { --tag-bg: var(--tag-pep-bg); --tag-ink: var(--tag-pep-ink); }
+  .who.c-bak { --tag-bg: var(--tag-bak-bg); --tag-ink: var(--tag-bak-ink); }
+  .who.c-lan { --tag-bg: var(--tag-lan-bg); --tag-ink: var(--tag-lan-ink); }
+  .who svg { display: block; }
+  .mcell .who:first-child { margin-left: 0; }
+  .who .tagbody { fill: var(--tag-bg); }
+  .who text {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    fill: var(--tag-ink);
+  }
+  .who .tagcrack { fill: none; stroke: var(--tag-ink); stroke-opacity: 0.5; stroke-width: 0.8; }
+  .acard-v .who { margin-left: 0; }
+  td .who:first-child, .hdet summary .who:first-child { margin-left: 0; }
+  .who.c-fff { --tag-bg: var(--tag-fff-bg); --tag-ink: var(--tag-fff-ink); }
+  @media (max-width: 720px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .hrow { flex-direction: column; gap: 0; margin: 8px 0; }
+    .hrow .hk { flex: none; padding-top: 0; }
+  }
+  @media (max-width: 640px) {
+    body { padding: 24px 16px 40px; font-size: 16px; }
+    h1 { font-size: 20px; }
+    .phead { margin-bottom: 16px; }
+    .pdisc { width: 36px; height: 36px; }
+    .pdisc .ic { width: 18px; height: 18px; }
+    .kpi { padding: 16px 12px; }
+    .kpi .kn { font-size: 26px; }
+    .ss-site { font-size: 13px; }
+    table { font-size: 14px; min-width: 640px; }
+    thead th, tbody td { padding: 12px; }
+    .table-wrap { display: none; }
+    .acards { display: block; }
+  }
+
+  /* Security grade: a soft note in the grade colour, not an alarm panel */
+  .grade {
+    border-radius: var(--radius-card);
+    padding: 16px;
+    margin: 0 0 24px;
+  }
+  .grade.A { background: var(--ga-t); }
+  .grade.B { background: var(--gb-t); }
+  .grade.C { background: var(--gc-t); }
+  .grade.D { background: var(--gd-t); }
+  .grade-top { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+  .gdisc {
+    width: 42px; height: 42px; border-radius: 50%; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: #fff;
+  }
+  .gdisc.A { background: var(--ga); }
+  .gdisc.B { background: var(--gb); color: #221a00; }
+  .gdisc.C { background: var(--gc); }
+  .gdisc.D { background: var(--gd); }
+  .gdisc.zero { background: #8f8f8f; }
+  /* Zero (unknown) card: empty tank; a separate IE red-X image sits
+     where the fish used to be. */
+  .grade.zero .gfish { background-image: url('fish-zero.webp'); background-size: 100% 100%; background-position: 0 0; }
+  .grade.zero .gfish::after { content: ''; position: absolute; left: 110px; top: 84px; width: 14px; height: 16px; background: url('ie-redx.png') no-repeat; background-size: 14px 16px; }
+  .grade.zero .gfish:not(.swim)::after { cursor: pointer; }
+  @keyframes xswim { 0% { transform: translateX(0); animation-timing-function: linear; } 2.1% { transform: translateX(-5px); animation-timing-function: linear; } 17.1% { transform: translateX(-27px); animation-timing-function: linear; } 27.1% { transform: translateX(-40px); animation-timing-function: ease-out; } 32.1% { transform: translateX(-45px); animation-timing-function: ease-in; } 39.6% { transform: translateX(-23px); animation-timing-function: linear; } 52.1% { transform: translateX(4px); animation-timing-function: linear; } 67.1% { transform: translateX(23px); animation-timing-function: linear; } 77.1% { transform: translateX(34px); animation-timing-function: ease-out; } 82.1% { transform: translateX(39px); animation-timing-function: ease-in; } 89.6% { transform: translateX(19px); animation-timing-function: linear; } 100% { transform: translateX(0); } }
+  .grade.zero .gfish.swim::after { animation: xswim 8s infinite; }
+  .grade.zero .gbar { cursor: default; pointer-events: none; }
+  .grade.zero .gmark { display: none; }
+  .gword { font-size: 17px; font-weight: 600; }
+  /* Rainbow gauge: one continuous spectrum bar (green, yellow, red, black);
+     a plain white plastic dot rides on the bar at the grade's quarter
+     position. The dot is a position indicator only — never a control. */
+  .ggauge { margin: 2px 0 0; }
+  .gfish-below { display: none; }
+  @media (min-width: 720px) {
+    /* The bar is exactly one tab wide: the tab control and the card
+       share the container, tabs are (container - 18px) / 2, and the
+       card content box is container - 34px, hence (100% + 16px) / 2. */
+    .grade .gmain .ggauge { width: calc((100% + 16px) / 2); flex: none; }
+  }
+  @media (min-width: 720px) {
+    .gmain .gfish { margin: 0 auto; }
+  }
+  .gmain { display: flex; align-items: center; gap: 20px; }
+  .gmain .ggauge { flex: 1 1 auto; min-width: 0; }
+  .gfish {
+    position: relative;
+    width: 229px; height: 135px; flex: none; border-radius: 12px;
+    background-image: url('fish-sprite.webp?v=7'); background-size: 400% 100%;
+    background-repeat: no-repeat; opacity: 1;
+    -webkit-touch-callout: none;
+  }
+  .grade .gdisc, .grade .gword, .grade .gfish { transition: opacity .19s ease; }
+  .grade.gfade .gdisc, .grade.gfade .gword, .grade.gfade .gfish { opacity: 0; }
+  @media (max-width: 719px) {
+    .gmain { flex-direction: column; align-items: stretch; }
+    .gfish { order: -1; margin: 0 auto 2px; }
+  }
+  .gbar {
+    position: relative; height: 14px; border-radius: 999px;
+    background: linear-gradient(90deg, var(--ga) 0%, var(--ga) 12.5%, var(--gb) 37.5%, var(--gc) 62.5%, var(--gd) 82%, var(--gd) 100%);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.10);
+    cursor: grab; touch-action: none;
+  }
+  .gbar:active { cursor: grabbing; }
+  .gmark {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 20px; height: 20px; border-radius: 50%; cursor: grab;
+    background: radial-gradient(circle at 34% 28%, #ffffff 0%, #ffffff 55%, #e9e9e9 100%);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 -1px 2px rgba(0, 0, 0, 0.10);
+  }
+  .gmark::after { content: ''; position: absolute; inset: -12px; border-radius: 50%; }
+  .gticks { position: relative; height: 16px; margin: 12px 0 0; }
+  .gtick {
+    position: absolute; transform: translateX(-50%);
+    font-size: 12px; font-weight: 600; line-height: 1.3;
+    color: var(--muted);
+  }
+  @media (prefers-color-scheme: dark) {
+    .gbar { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+    .gdisc.D { --glow: rgba(140, 132, 118, 0.50); }
+  }
+  .glines { margin: 12px 0 0; }
+  .gline { font-size: 14px; line-height: 1.6; margin: 4px 0; }
+  .gline .gk { font-weight: 600; }
+  .gline.gdone { color: var(--done-text); }
+  .gline.gdone .gcheck { font-weight: 700; margin-right: 6px; }
+
+  .grade .gline.calm { margin: 12px 0 0; }
+  @media (max-width: 720px) {
+    .grade { padding: 12px; }
+  }
+  /* Breathing indicators, modelled on an old phone's notification LED:
+     the light itself slowly rises, holds at full brightness, fades down,
+     then rests in the dark for the remainder of each cycle. */
+  @keyframes breath-glow {
+    0% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+    30% { opacity: 1; box-shadow: 0 0 7px 3px var(--glow); }
+    46% { opacity: 1; box-shadow: 0 0 7px 3px var(--glow); }
+    64% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+    100% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+  }
+  @keyframes breath-glow-bad {
+    0% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+    26% { opacity: 1; box-shadow: 0 0 7px 3px var(--glow); }
+    40% { opacity: 1; box-shadow: 0 0 7px 3px var(--glow); }
+    58% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+    100% { opacity: 0.35; box-shadow: 0 0 2px 0 var(--glow); }
+  }
+  .hdot { --glow: rgba(52, 168, 83, 0.45); animation: breath-glow 4.6s ease-in-out infinite; }
+  .hdot.bad { --glow: rgba(217, 48, 37, 0.55); animation-name: breath-glow-bad; animation-duration: 2.4s; }
+  .hdot.warn { --glow: rgba(217, 165, 20, 0.5); animation-duration: 3.4s; }
+  .hdot.stale { animation: none; }
+  /* Each host breathes on its own rhythm: host 2 runs a different period
+     with a phase offset, so the two dots never pulse in lockstep. */
+  #ha-host2 .hdot:not(.stale) { animation-duration: 5.5s; animation-delay: -1.9s; }
+  #ha-host2 .hdot.bad { animation-duration: 2.9s; animation-delay: -0.8s; }
+  /* Categorical chips: repeated categories become blocks, not re-read text */
+  .flag { width: 21px; height: 14px; flex: none; object-fit: contain; object-position: center; background: #fff; border-radius: 2px; vertical-align: -2px; outline: 1px solid var(--border); }
+  .appicon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; background: #fff; border-radius: 2px; vertical-align: -2px; outline: 1px solid var(--border); color: #242424; }
+  .mchip, .cchip {
+    display: inline-flex; align-items: center; height: 20px;
+    padding: 0 7px; border-radius: 999px; vertical-align: middle;
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.05em; background: var(--hl); color: var(--text);
+    white-space: nowrap;
+  }
+  .sdot {
+    display: inline-block; width: 11px; height: 11px; border-radius: var(--radius-xs);
+    flex: none; border: 1px solid var(--border); box-sizing: border-box;
+  }
+  .siteline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .okb {
+    display: inline-block; background: var(--ok-bg); color: var(--ok-text);
+    border: 1px solid transparent;
+    border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700;
+    white-space: nowrap;
+  }
+@media (max-width:719px) {
+  #view-web .web-section-no-stat { display:none; }
+  #view-web .web-section > summary { padding:16px; }
+  #view-web .web-section-body { padding:16px; min-width:0; }
+  #view-web .web-section-body > :is(.incidents,.sitestats,.acards,.empty) { margin:0; min-width:0; }
+  #view-web .web-section-body .t2 { display:none; }
+  #view-web .web-section-body .ss-site { min-width:0; overflow-wrap:anywhere; }
+    /* Let section headings hand off beneath the sticky top navigation. */
+    #view-web .web-section, #view-host .hacc { overflow:visible; }
+    #view-web .web-section > summary, #view-host .hacc > summary {
+      position:sticky;
+      top:58px;
+      z-index:4;
+      background:var(--surface);
+      border-radius:var(--radius-card);
+    }
+}
+@media (min-width:720px) {
+  #view-web .web-section, .web-section-body { display:contents; }
+  #view-web .web-section > summary, .web-mobile-empty { display:none; }
+}
+
+  /* Record hierarchy shared by host lists, login details and web rankings. */
+  tbody td { color: var(--muted); }
+  tbody td.mono, tbody td.count, tbody td.rank { color: var(--text); }
+  tbody td.mono { font-weight: 600; }
+  .record-time { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); font-size: 12px; }
+  .record-count, .acard-count { color: var(--text); font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .record-count small, .acard-count small { color: var(--muted); font-size: 11px; font-weight: 400; }
+  .hip.record, .hdet .hip.record {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "ip count" "meta meta" "tags tags";
+    gap: 4px 12px; margin: 0; padding: 12px 0;
+    border-bottom: 1px solid var(--border); line-height: 1.5;
+  }
+  .hip.record:last-child { border-bottom: 0; }
+  .record-ip { grid-area: ip; min-width: 0; font-weight: 600; overflow-wrap: anywhere; word-break: normal; }
+  .record-count { grid-area: count; text-align: right; align-self: start; white-space: nowrap; }
+  .record-meta { grid-area: meta; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; min-width: 0; }
+  .record-meta .record-time { margin-left: auto; }
+  .record-tags { grid-area: tags; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; margin-top: 4px; }
+  .record-meta:empty, .record-tags:empty { display: none; }
+  .record-tags .who { margin-left: 0; }
+  .record-alert { border-left: 3px solid var(--bad-border); padding-left: 10px !important; }
+  .login-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; color: var(--muted); font-size: 12px; margin-top: 5px; }
+  .login-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .login-tags .who { margin-left: 0; }
+  .login-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+  @media (max-width: 719px) {
+    .table-wrap { display: none; }
+    .acards { display: block; }
+    .hrow { flex-direction: column; gap: 6px; margin: 18px 0; }
+    .hrow .hk { flex: none; padding: 0; font-size: 12px; }
+    .hrow .hv { width: 100%; }
+    .hacc-body, #view-web .web-section-body { min-width: 0; }
+    .hdet { padding: 0 12px; }
+    .hdet summary { font-size: 12px; }
+    .acard { margin: 0; padding: 16px 0; }
+    .acard:first-child { padding-top: 0; }
+    .acard-ip { font-size: 14px; font-weight: 600; word-break: normal; overflow-wrap: anywhere; }
+    .acard-head { align-items: baseline; gap: 8px; }
+    .acard-rank { font-size: 11px; font-weight: 400; }
+    .acard-loc { margin: 5px 0 10px; line-height: 1.5; }
+    .acard-row { margin: 8px 0 0; gap: 8px; font-size: 13px; }
+    .acard-k { flex-basis: 68px; font-size: 11px; }
+    .acard-det { margin-top: 10px; border-radius: var(--radius-sm); }
+    .acard-det summary { font-size: 12px; padding: 8px 0; min-height: 44px; }
+    .paths { font-size: 12px; line-height: 1.6; }
+    .paths > div { padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .paths > div:last-child { border-bottom: 0; }
+    .incident .srcgrid { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+    .incident .sip { overflow-wrap: anywhere; font-weight: 600; }
+    .incident .srcgrid > .source-location { grid-column: 1 / -1; color: var(--muted); font-size: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .incident .tgrid { gap: 6px 12px; }
+    .incident .tgrid .tv { font-size: 13px; }
+    .ss-row { gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .ss-row:last-child { border-bottom: 0; }
+    .ss-site { font-size: 13px; font-weight: 500; }
+    .ss-count { font-variant-numeric: tabular-nums; font-weight: 650; }
+  }
+
+  .hip.record, .hdet .hip.record { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 12px; margin: 0; padding: 12px 0; border-bottom: 1px solid var(--border); line-height: 1.5; }
+  .hip.record:last-child { border-bottom: 0; }
+  .record-ip { min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; word-break: normal; }
+  .record-count { font-size: 14px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+  .record-count small, .acard-count small { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .record-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--muted); font-size: 12px; }
+  .record-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .record-meta .record-time { margin-left: auto; }
+  .record-tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; margin-top: 4px; }
+  @media (min-width: 720px) { .hrow .hk { align-self: flex-start; } .hrow .hv > .record { max-width: 680px; } }
+
+  /* Center each medal against the complete ranking record, including expanded paths. */
+  .acard.has-medal { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 10px; align-items: center; }
+  .acard.has-medal > .medal-img { display: block; margin: 0; align-self: center; justify-self: center; }
+  .acard-content { min-width: 0; }
+  .acard.has-medal > .acard-det { grid-column: 1 / -1; width: 100%; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><mask id="who-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="53" height="22"><path d="M 9.7 8.9 L 14.5 3.5 A 3.2 3.2 0 0 1 16.9 2.4 L 47.4 2.4 A 3.2 3.2 0 0 1 50.6 5.6 L 50.6 16.4 A 3.2 3.2 0 0 1 47.4 19.6 L 16.9 19.6 A 3.2 3.2 0 0 1 14.5 18.5 L 9.7 13.1 A 3.2 3.2 0 0 1 9.7 8.9 Z" fill="#fff"/><circle cx="15.3" cy="11" r="2.2" fill="#000"/></mask></defs></svg>
+  <main class="wrap">
+    <header class="phead"><span class="pdisc"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 2.8v5.4c0 4.4-2.9 7.6-7 9.3-4.1-1.7-7-4.9-7-9.3V5.8L12 3z"/></svg></span><div class="ptxt"><h1>安全日志</h1><p class="sub" id="win"></p></div></header>
+    <section id="sec"></section>
+    <footer class="page-footer">© 2026 Sunplace</footer>
+  </main>
+
+<script>
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var SITE_LABELS = {
+    'api.example.com': 'api',
+    'docs.example.com': '文档站',
+    'blog-cms': '博客 CMS',
+    'story-cms': '故事 CMS'
+  };
+  function siteLabel(s) {
+    if (!s) return s;
+    return SITE_LABELS[s] || s;
+  }
+
+  var ICONS = {
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/>',
+    server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+    chart: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-8"/>',
+    alert: '<path d="M12 3.5 2.8 19.5h18.4L12 3.5z"/><path d="M12 10v4.2"/><path d="M12 17.4h.01"/>',
+    key: '<circle cx="8" cy="15.5" r="4.5"/><path d="M11.3 12.2 20 3.5"/><path d="M15.5 8l3 3"/>',
+    login: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>',
+    ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+    shield: '<path d="M12 3l7 2.8v5.4c0 4.4-2.9 7.6-7 9.3-4.1-1.7-7-4.9-7-9.3V5.8L12 3z"/>',
+    zap: '<path d="M13 2.5 4.8 13.5h6L9.6 21.5l8.4-11h-6L13 2.5z"/>',
+    xcircle: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    check: '<path d="M4 12.5l5 5L20 6.5"/>',
+    monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9.5 20h5M12 16v4"/>',
+    chev: '<path d="M6 9.5l6 6 6-6"/>'
+  };
+  function icon(n) {
+    return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
+  }
+  function tdisc(n) {
+    return '<span class="tdisc">' + icon(n) + '</span>';
+  }
+  function chev() {
+    return '<span class="chev">' + icon('chev') + '</span>';
+  }
+  function kpi(num, label, ic, tier) {
+    var tc = tier === 2 ? ' danger' : (tier === 1 ? ' warn' : '');
+    return '<div class="kpi"><span class="kdisc' + tc + '">' +
+      icon(ic) + '</span><div class="kn">' + num +
+      '</div><div class="kl">' + label + '</div></div>';
+  }
+
+  var GRADE_WORDS = { A: '安全', B: '注意', C: '警告', D: '危险' };
+  // Casual lines for the grades that need no action from the owner,
+  // re-rolled on every render. A shows one A-pool line (the generator's
+  // A text in the JSON stays as fallback); B keeps the factual "what"
+  // and draws its action line from the B pool. C/D never use the pools:
+  // their lines are the generator's fixed, serious templates.
+  var GRADE_POOL_A = [
+    '风平浪静，什么事都没有。',
+    '安安静静，无事发生。',
+    '一切如常。',
+    '无事发生，安心。',
+    '本时段一切安好。',
+    '安静得很，没什么要操心的。',
+    '平平静静，没什么动静。',
+    '一切正常，放心。',
+    '静悄悄的，什么事都没有。',
+    '本时段无事，一切安好。'
+  ];
+  var GRADE_POOL_B = [
+    '无需操作。都是被挡下的常规探测，扫一眼即可。',
+    '不用管，只是敲门声，进不来。',
+    '无需操作。敲门的不少，没一个进来。',
+    '不用操心，都被挡在门外了。',
+    '无需操作。例行敲打，全部挡下。',
+    '不用管，扫一眼就行。',
+    '无需操作。都是冲着门来的，没碰到屋里。',
+    '不用处理，常规骚扰，全部拦截。'
+  ];
+  // For a web A that still saw (blocked) attack requests under the
+  // 2026-11-23 ladder: the card shows the factual "what" plus one of
+  // these. None of them claims nothing happened.
+  var GRADE_POOL_A2 = [
+    '无需任何操作，都挡下了。',
+    '不用管，没一个进来。',
+    '无需操作。例行探测，全部拦截。',
+    '不用操心，扫一眼即可。',
+    '无需处理，都在门外。',
+    '不用管，防线都挡住了。'
+  ];
+  function poolPick(pool) {
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  var GRADE_POS = { A: '12.5%', B: '37.5%', C: '62.5%', D: '87.5%' };
+  var FISH_POS = { A: '0% 0', B: '33.333% 0', C: '66.667% 0', D: '100% 0' };
+  function gradeStrip(g) {
+    if (!g || !GRADE_WORDS[g.level]) return '';
+    var isZero = g.level === 'A' && g.zero;
+    var discLetter = isZero ? '?' : g.level;
+    var discClass = isZero ? 'zero' : g.level;
+    var wordText = isZero ? '未知' : GRADE_WORDS[g.level];
+    var ticks = ['A', 'B', 'C', 'D'].map(function (L) {
+      return '<span class="gtick ' + L + '" style="left:' + GRADE_POS[L] + '">' +
+        L + '</span>';
+    }).join('');
+    var s = '<div class="grade ' + g.level + (isZero ? ' zero' : '') + '" data-real="' + g.level + '">' +
+      '<div class="grade-top"><span class="gdisc ' + discClass + '">' + discLetter +
+      '</span><span class="gword">' + wordText + '</span></div>' +
+      '<div class="gmain"><div class="ggauge"><div class="gbar">' +
+      (isZero ? '' : '<span class="gmark ' + g.level + '" style="left:' + GRADE_POS[g.level] + '"></span>') + '</div>' +
+      '<div class="gticks">' + ticks + '</div></div>' +
+      '<div class="gfish" style="background-position:' + FISH_POS[g.level] + '"></div></div>';
+    if (g.level === 'A') {
+      if (g.zero) {
+        s += '<div class="glines">' +
+          '<p class="gline"><span class="gk">发生了什么：</span>' + esc(g.what || '') + '</p>' +
+          '<p class="gline"><span class="gk">你需要做：</span>' + esc(g.action || '') + '</p></div>';
+      } else if (g.done && g.done_text) {
+        s += '<div class="glines">' +
+          '<p class="gline"><span class="gk">发生了什么：</span>' + esc(g.what || '') + '</p>' +
+          '<p class="gline gdone"><span class="gcheck">✓</span>' + esc(g.done_text) + '</p></div>';
+      } else if (g.what && g.what.indexOf('攻击请求') >= 0) {
+        var actA = GRADE_POOL_A2.length ? poolPick(GRADE_POOL_A2)
+          : (g.action || '');
+        s += '<div class="glines">' +
+          '<p class="gline"><span class="gk">发生了什么：</span>' + esc(g.what) + '</p>' +
+          '<p class="gline"><span class="gk">你需要做：</span>' + esc(actA) + '</p></div>';
+      } else if (g.what) {
+        s += '<div class="glines">' +
+          '<p class="gline"><span class="gk">发生了什么：</span>' + esc(g.what || '') + '</p>' +
+          '<p class="gline"><span class="gk">你需要做：</span>' + esc(g.action || '') + '</p></div>';
+      } else {
+        var calm = GRADE_POOL_A.length ? poolPick(GRADE_POOL_A) : '';
+        s += '<p class="gline calm">' + esc(calm) + '</p>';
+      }
+    } else {
+      var act = g.action || '';
+      if (g.level === 'B' && GRADE_POOL_B.length) act = poolPick(GRADE_POOL_B);
+      var actLine;
+      if (g.done && g.done_text) {
+        actLine = '<p class="gline gdone"><span class="gcheck">✓</span>' +
+          esc(g.done_text) + '</p>';
+      } else {
+        actLine = '<p class="gline"><span class="gk">你需要做：</span>' +
+          esc(act) + '</p>';
+      }
+      s += '<div class="glines">' +
+        '<p class="gline"><span class="gk">发生了什么：</span>' + esc(g.what || '') + '</p>' +
+        actLine + '</div>';
+    }
+    return s + '</div>';
+  }
+
+  var SITE_DOTS = {
+    'example.com': '#4a7fb5', 'shop.example.com': '#2a9d8f', 'api.example.com': '#7d5ba6',
+    'blog.example.com': '#4c9a4c', 'blog-cms': '#1f9d7a', 'docs.example.com': '#c24b63',
+    'story-cms': '#a83e97', 'support.example.com': '#cf9416'
+  };
+  function verdictHtml(v) {
+    if (v === '需留意') return 'Needs Review';
+    if (v === '未得手') return 'Unsuccessful';
+    return esc(v);
+  }
+  var SITE_FRAC = {};
+  function siteLine(key) {
+    return '<span class="siteline">' + siteDot(SITE_FRAC[key] || 0) +
+      '<span>' + esc(siteLabel(key)) + '</span></span>';
+  }
+  // Five 20% bands from pink to black - a stepped scale, not a
+  // continuous percentage blend.
+  // Blood ramp: diluted pink -> fresh scarlet -> blood red
+  // (#8a0303) -> deep venous -> dried-blood brown-black.
+  var HEAT_BANDS = ['#f0c0c0', '#cf3f38', '#8a0303', '#4d0404', '#240503'];
+  function siteDot(frac) {
+    var p = Math.max(0, Math.min(1, frac || 0));
+    var i = p <= 0 ? 0 : Math.min(4, Math.ceil(p / 0.2) - 1);
+    return '<span class="sdot" style="background:' + HEAT_BANDS[i] +
+      '"></span>';
+  }
+
+  var COUNTRY_ISO = {
+    'China': 'CHN', 'United States': 'USA', 'Germany': 'DEU', 'Slovenia': 'SVN',
+    'Belgium': 'BEL', 'Hong Kong': 'HKG', 'Singapore': 'SGP', 'Canada': 'CAN',
+    'France': 'FRA', 'United Kingdom': 'GBR', 'Japan': 'JPN', 'South Korea': 'KOR',
+    'Netherlands': 'NLD', 'The Netherlands': 'NLD', 'Russia': 'RUS', 'India': 'IND', 'Brazil': 'BRA',
+    'Australia': 'AUS', 'Taiwan': 'TWN', 'Vietnam': 'VNM', 'Thailand': 'THA',
+    'Indonesia': 'IDN', 'Malaysia': 'MYS', 'Philippines': 'PHL', 'Spain': 'ESP',
+    'Italy': 'ITA', 'Poland': 'POL', 'Ukraine': 'UKR', 'Romania': 'ROU',
+    'Bulgaria': 'BGR', 'Lithuania': 'LTU', 'Estonia': 'EST', 'Latvia': 'LVA',
+    'Finland': 'FIN', 'Sweden': 'SWE', 'Norway': 'NOR', 'Denmark': 'DNK',
+    'Austria': 'AUT', 'Switzerland': 'CHE', 'Ireland': 'IRL', 'Portugal': 'PRT',
+    'Greece': 'GRC', 'Turkey': 'TUR', 'Israel': 'ISR', 'United Arab Emirates': 'ARE',
+    'Saudi Arabia': 'SAU', 'Egypt': 'EGY', 'South Africa': 'ZAF', 'Nigeria': 'NGA',
+    'Kenya': 'KEN', 'Mexico': 'MEX', 'Argentina': 'ARG', 'Chile': 'CHL',
+    'Colombia': 'COL', 'Peru': 'PER', 'New Zealand': 'NZL', 'Bangladesh': 'BGD',
+    'Pakistan': 'PAK', 'Kazakhstan': 'KAZ', 'Uzbekistan': 'UZB', 'Iran': 'IRN',
+    'Iraq': 'IRQ', 'Myanmar': 'MMR', 'Cambodia': 'KHM', 'Laos': 'LAO',
+    'Nepal': 'NPL', 'Sri Lanka': 'LKA', 'Mongolia': 'MNG', 'Georgia': 'GEO',
+    'Armenia': 'ARM', 'Azerbaijan': 'AZE', 'Belarus': 'BLR', 'Moldova': 'MDA',
+    'Serbia': 'SRB', 'Croatia': 'HRV', 'Czechia': 'CZE', 'Slovakia': 'SVK',
+    'Hungary': 'HUN', 'Bosnia and Herzegovina': 'BIH', 'Albania': 'ALB',
+    'North Macedonia': 'MKD', 'Montenegro': 'MNE', 'Iceland': 'ISL', 'Andorra': 'AND',
+    'Luxembourg': 'LUX', 'Malta': 'MLT', 'Cyprus': 'CYP', 'Kuwait': 'KWT',
+    'Qatar': 'QAT', 'Oman': 'OMN', 'Jordan': 'JOR', 'Lebanon': 'LBN',
+    'Morocco': 'MAR', 'Algeria': 'DZA', 'Tunisia': 'TUN', 'Ethiopia': 'ETH',
+    'Ghana': 'GHA', 'Angola': 'AGO', 'Mozambique': 'MOZ', 'Madagascar': 'MDG',
+    'Uganda': 'UGA', 'Zambia': 'ZMB', 'Zimbabwe': 'ZWE', 'Senegal': 'SEN',
+    'Ivory Coast': 'CIV', 'Cameroon': 'CMR', 'Tanzania': 'TZA', 'Sudan': 'SDN',
+    'Libya': 'LBY', 'Yemen': 'YEM', 'Syria': 'SYR', 'Afghanistan': 'AFG',
+    'Kyrgyzstan': 'KGZ', 'Tajikistan': 'TJK', 'Turkmenistan': 'TKM',
+    'North Korea': 'PRK', 'Brunei': 'BRN', 'Maldives': 'MDV', 'Bhutan': 'BTN',
+    'Timor-Leste': 'TLS', 'Papua New Guinea': 'PNG', 'Fiji': 'FJI',
+    'Ecuador': 'ECU', 'Bolivia': 'BOL', 'Paraguay': 'PRY', 'Uruguay': 'URY',
+    'Venezuela': 'VEN', 'Guatemala': 'GTM', 'Cuba': 'CUB', 'Haiti': 'HTI',
+    'Dominican Republic': 'DOM', 'Honduras': 'HND', 'Nicaragua': 'NIC',
+    'El Salvador': 'SLV', 'Panama': 'PAN', 'Costa Rica': 'CRI', 'Jamaica': 'JAM',
+    'Trinidad and Tobago': 'TTO', 'Bahamas': 'BHS', 'Belize': 'BLZ',
+    'Guyana': 'GUY', 'Suriname': 'SUR', 'Mali': 'MLI', 'Burkina Faso': 'BFA',
+    'Niger': 'NER', 'Chad': 'TCD', 'Guinea': 'GIN', 'Benin': 'BEN',
+    'Burundi': 'BDI', 'Somalia': 'SOM', 'Malawi': 'MWI', 'Namibia': 'NAM',
+    'Botswana': 'BWA', 'Lesotho': 'LSO', 'Eswatini': 'SWZ', 'Gabon': 'GAB',
+    'Congo': 'COG', 'DR Congo': 'COD', 'Central African Republic': 'CAF',
+    'Mauritania': 'MRT', 'Togo': 'TGO', 'Sierra Leone': 'SLE', 'Liberia': 'LBR',
+    'Eritrea': 'ERI', 'Gambia': 'GMB', 'Cabo Verde': 'CPV', 'Djibouti': 'DJI',
+    'Comoros': 'COM', 'Seychelles': 'SYC', 'Mauritius': 'MUS'
+  };
+  var FLAG2 = {'AFG': 'af', 'AGO': 'ao', 'ALB': 'al', 'AND': 'ad', 'ARE': 'ae', 'ARG': 'ar', 'ARM': 'am', 'AUS': 'au', 'AUT': 'at', 'AZE': 'az', 'BDI': 'bi', 'BEL': 'be', 'BEN': 'bj', 'BFA': 'bf', 'BGD': 'bd', 'BGR': 'bg', 'BHS': 'bs', 'BIH': 'ba', 'BLR': 'by', 'BLZ': 'bz', 'BOL': 'bo', 'BRA': 'br', 'BRN': 'bn', 'BTN': 'bt', 'BWA': 'bw', 'CAF': 'cf', 'CAN': 'ca', 'CHE': 'ch', 'CHL': 'cl', 'CHN': 'cn', 'CIV': 'ci', 'CMR': 'cm', 'COD': 'cd', 'COG': 'cg', 'COL': 'co', 'COM': 'km', 'CPV': 'cv', 'CRI': 'cr', 'CUB': 'cu', 'CYP': 'cy', 'CZE': 'cz', 'DEU': 'de', 'DJI': 'dj', 'DNK': 'dk', 'DOM': 'do', 'DZA': 'dz', 'ECU': 'ec', 'EGY': 'eg', 'ERI': 'er', 'ESP': 'es', 'EST': 'ee', 'ETH': 'et', 'FIN': 'fi', 'FJI': 'fj', 'FRA': 'fr', 'GAB': 'ga', 'GBR': 'gb', 'GEO': 'ge', 'GHA': 'gh', 'GIN': 'gn', 'GMB': 'gm', 'GRC': 'gr', 'GTM': 'gt', 'GUY': 'gy', 'HKG': 'hk', 'HND': 'hn', 'HRV': 'hr', 'HTI': 'ht', 'HUN': 'hu', 'IDN': 'id', 'IND': 'in', 'IRL': 'ie', 'IRN': 'ir', 'IRQ': 'iq', 'ISL': 'is', 'ISR': 'il', 'ITA': 'it', 'JAM': 'jm', 'JOR': 'jo', 'JPN': 'jp', 'KAZ': 'kz', 'KEN': 'ke', 'KGZ': 'kg', 'KHM': 'kh', 'KOR': 'kr', 'KWT': 'kw', 'LAO': 'la', 'LBN': 'lb', 'LBR': 'lr', 'LBY': 'ly', 'LKA': 'lk', 'LSO': 'ls', 'LTU': 'lt', 'LUX': 'lu', 'LVA': 'lv', 'MAR': 'ma', 'MDA': 'md', 'MDG': 'mg', 'MDV': 'mv', 'MEX': 'mx', 'MKD': 'mk', 'MLI': 'ml', 'MLT': 'mt', 'MMR': 'mm', 'MNE': 'me', 'MNG': 'mn', 'MOZ': 'mz', 'MRT': 'mr', 'MUS': 'mu', 'MWI': 'mw', 'MYS': 'my', 'NAM': 'na', 'NER': 'ne', 'NGA': 'ng', 'NIC': 'ni', 'NLD': 'nl', 'NOR': 'no', 'NPL': 'np', 'NZL': 'nz', 'OMN': 'om', 'PAK': 'pk', 'PAN': 'pa', 'PER': 'pe', 'PHL': 'ph', 'PNG': 'pg', 'POL': 'pl', 'PRK': 'kp', 'PRT': 'pt', 'PRY': 'py', 'QAT': 'qa', 'ROU': 'ro', 'RUS': 'ru', 'SAU': 'sa', 'SDN': 'sd', 'SEN': 'sn', 'SGP': 'sg', 'SLE': 'sl', 'SLV': 'sv', 'SOM': 'so', 'SRB': 'rs', 'SUR': 'sr', 'SVK': 'sk', 'SVN': 'si', 'SWE': 'se', 'SWZ': 'sz', 'SYC': 'sc', 'SYR': 'sy', 'TCD': 'td', 'TGO': 'tg', 'THA': 'th', 'TJK': 'tj', 'TKM': 'tm', 'TLS': 'tl', 'TTO': 'tt', 'TUN': 'tn', 'TUR': 'tr', 'TWN': 'tw', 'TZA': 'tz', 'UGA': 'ug', 'UKR': 'ua', 'URY': 'uy', 'USA': 'us', 'UZB': 'uz', 'VEN': 've', 'VNM': 'vn', 'YEM': 'ye', 'ZAF': 'za', 'ZMB': 'zm', 'ZWE': 'zw'};
+  var CN_NAME = {'Afghanistan': '阿富汗', 'Albania': '阿尔巴尼亚', 'Algeria': '阿尔及利亚', 'Andorra': '安道尔', 'Angola': '安哥拉', 'Argentina': '阿根廷', 'Armenia': '亚美尼亚', 'Australia': '澳大利亚', 'Austria': '奥地利', 'Azerbaijan': '阿塞拜疆', 'Bahamas': '巴哈马', 'Bangladesh': '孟加拉国', 'Belarus': '白俄罗斯', 'Belgium': '比利时', 'Belize': '伯利兹', 'Benin': '贝宁', 'Bhutan': '不丹', 'Bolivia': '玻利维亚', 'Bosnia and Herzegovina': '波斯尼亚和黑塞哥维那', 'Botswana': '博茨瓦纳', 'Brazil': '巴西', 'Brunei': '文莱', 'Bulgaria': '保加利亚', 'Burkina Faso': '布基纳法索', 'Burundi': '布隆迪', 'Cabo Verde': '佛得角', 'Cambodia': '柬埔寨', 'Cameroon': '喀麦隆', 'Canada': '加拿大', 'Central African Republic': '中非', 'Chad': '乍得', 'Chile': '智利', 'China': '中国', 'Colombia': '哥伦比亚', 'Comoros': '科摩罗', 'Congo': '刚果（布）', 'Costa Rica': '哥斯达黎加', 'Croatia': '克罗地亚', 'Cuba': '古巴', 'Cyprus': '塞浦路斯', 'Czechia': '捷克', 'DR Congo': '刚果（金）', 'Denmark': '丹麦', 'Djibouti': '吉布提', 'Dominican Republic': '多米尼加', 'Ecuador': '厄瓜多尔', 'Egypt': '埃及', 'El Salvador': '萨尔瓦多', 'Eritrea': '厄立特里亚', 'Estonia': '爱沙尼亚', 'Eswatini': '斯威士兰', 'Ethiopia': '埃塞俄比亚', 'Fiji': '斐济', 'Finland': '芬兰', 'France': '法国', 'Gabon': '加蓬', 'Gambia': '冈比亚', 'Georgia': '格鲁吉亚', 'Germany': '德国', 'Ghana': '加纳', 'Greece': '希腊', 'Guatemala': '危地马拉', 'Guinea': '几内亚', 'Guyana': '圭亚那', 'Haiti': '海地', 'Honduras': '洪都拉斯', 'Hong Kong': '中国香港', 'Hungary': '匈牙利', 'Iceland': '冰岛', 'India': '印度', 'Indonesia': '印度尼西亚', 'Iran': '伊朗', 'Iraq': '伊拉克', 'Ireland': '爱尔兰', 'Israel': '以色列', 'Italy': '意大利', 'Ivory Coast': '科特迪瓦', 'Jamaica': '牙买加', 'Japan': '日本', 'Jordan': '约旦', 'Kazakhstan': '哈萨克斯坦', 'Kenya': '肯尼亚', 'Kuwait': '科威特', 'Kyrgyzstan': '吉尔吉斯斯坦', 'Laos': '老挝', 'Latvia': '拉脱维亚', 'Lebanon': '黎巴嫩', 'Lesotho': '莱索托', 'Liberia': '利比里亚', 'Libya': '利比亚', 'Lithuania': '立陶宛', 'Luxembourg': '卢森堡', 'Madagascar': '马达加斯加', 'Malawi': '马拉维', 'Malaysia': '马来西亚', 'Maldives': '马尔代夫', 'Mali': '马里', 'Malta': '马耳他', 'Mauritania': '毛里塔尼亚', 'Mauritius': '毛里求斯', 'Mexico': '墨西哥', 'Moldova': '摩尔多瓦', 'Mongolia': '蒙古', 'Montenegro': '黑山', 'Morocco': '摩洛哥', 'Mozambique': '莫桑比克', 'Myanmar': '缅甸', 'Namibia': '纳米比亚', 'Nepal': '尼泊尔', 'Netherlands': '荷兰', 'New Zealand': '新西兰', 'Nicaragua': '尼加拉瓜', 'Niger': '尼日尔', 'Nigeria': '尼日利亚', 'North Korea': '朝鲜', 'North Macedonia': '北马其顿', 'Norway': '挪威', 'Oman': '阿曼', 'Pakistan': '巴基斯坦', 'Panama': '巴拿马', 'Papua New Guinea': '巴布亚新几内亚', 'Paraguay': '巴拉圭', 'Peru': '秘鲁', 'Philippines': '菲律宾', 'Poland': '波兰', 'Portugal': '葡萄牙', 'Qatar': '卡塔尔', 'Romania': '罗马尼亚', 'Russia': '俄罗斯', 'Saudi Arabia': '沙特阿拉伯', 'Senegal': '塞内加尔', 'Serbia': '塞尔维亚', 'Seychelles': '塞舌尔', 'Sierra Leone': '塞拉利昂', 'Singapore': '新加坡', 'Slovakia': '斯洛伐克', 'Slovenia': '斯洛文尼亚', 'Somalia': '索马里', 'South Africa': '南非', 'South Korea': '韩国', 'Spain': '西班牙', 'Sri Lanka': '斯里兰卡', 'Sudan': '苏丹', 'Suriname': '苏里南', 'Sweden': '瑞典', 'Switzerland': '瑞士', 'Syria': '叙利亚', 'Taiwan': '中国台湾', 'Tajikistan': '塔吉克斯坦', 'Tanzania': '坦桑尼亚', 'Thailand': '泰国', 'The Netherlands': '荷兰', 'Timor-Leste': '东帝汶', 'Togo': '多哥', 'Trinidad and Tobago': '特立尼达和多巴哥', 'Tunisia': '突尼斯', 'Turkey': '土耳其', 'Turkmenistan': '土库曼斯坦', 'Uganda': '乌干达', 'Ukraine': '乌克兰', 'United Arab Emirates': '阿联酋', 'United Kingdom': '英国', 'United States': '美国', 'Uruguay': '乌拉圭', 'Uzbekistan': '乌兹别克斯坦', 'Venezuela': '委内瑞拉', 'Vietnam': '越南', 'Yemen': '也门', 'Zambia': '赞比亚', 'Zimbabwe': '津巴布韦'};
+  function flagHtml(iso, full) {
+    var a2 = iso === 'TWN' ? 'cn' : FLAG2[iso];
+    var cn = CN_NAME[full] || full;
+    if (!a2) return '<span class="cchip" title="' + esc(cn) + '">' + iso + '</span>';
+    return '<img class="flag" src="https://flagcdn.com/w80/' + a2 + '.png" srcset="https://flagcdn.com/w160/' + a2 + '.png 2x" alt="' + iso + '" title="' + esc(cn) + '" loading="lazy">';
+  }
+  var APP_ICON_PATHS = {
+    Tailscale: 'M24 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm-9 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm0-9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6-6a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 24a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm18 .5a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm9-9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm-3 2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 3a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM3 5.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+    ZeroTier: 'M4.01 0A3.999 3.999 0 0 0 .014 4v16c0 2.209 1.79 4 3.996 4h15.98a3.998 3.998 0 0 0 3.996-4V4c0-2.209-1.79-4-3.996-4zm-.672 2.834h17.326a.568.568 0 1 1 0 1.137h-8.129c.021.059.033.123.033.19v1.804A6.06 6.06 0 0 1 18.057 12c0 3.157-2.41 5.75-5.489 6.037v2.56a.568.568 0 1 1-1.136 0v-2.56A6.061 6.061 0 0 1 5.943 12a6.06 6.06 0 0 1 5.489-6.035V4.16c0-.066.012-.13.033-.19H3.338a.568.568 0 1 1 0-1.136zm8.094 4.307A4.89 4.89 0 0 0 7.113 12a4.89 4.89 0 0 0 4.319 4.86zm1.136 0v9.718A4.892 4.892 0 0 0 16.888 12a4.892 4.892 0 0 0-4.32-4.86z'
+  };
+  var APP_ICON_COLORS = { Tailscale: '#242424', ZeroTier: '#FFB441' };
+  function appIcon(app) {
+    var p = APP_ICON_PATHS[app];
+    if (!p) return '';
+    return '<span class="appicon" style="color:' + (APP_ICON_COLORS[app] || '#242424') + '" title="' + esc(app) + '"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="' + p + '"/></svg></span>';
+  }
+  document.addEventListener('error', function (e) { var t = e.target; if (t && t.tagName === 'IMG' && t.className === 'flag') { var sp = document.createElement('span'); sp.className = 'cchip'; sp.textContent = t.alt || ''; t.replaceWith(sp); } }, true);
+  function locHtml(loc) {
+    if (!loc) return '';
+    if (loc === '组网' || loc === '局域网' || loc === '本机' || loc === '未知') {
+      return esc(loc);
+    }
+    var parts = String(loc).split(' · ');
+    var iso = COUNTRY_ISO[parts[0]];
+    if (!iso) return esc(loc);
+    var rest = parts.slice(1).join(' · ');
+    return flagHtml(iso, parts[0]) + (rest ? ' ' + esc(rest) : '');
+  }
+  function locDisp(e, plain) {
+    if (!e.loc) return '';
+    if (e.app && e.loc === '组网') return esc(e.app) + '组网';
+    if (plain) return esc(String(e.loc).split(' · ').slice(1).join(' · ') || e.loc);
+    return locHtml(e.loc);
+  }
+
+  function fmtDur(ms) {
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + ' 秒';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + ' 分钟';
+    var h = Math.floor(m / 60), rm = m % 60;
+    if (h < 24) return h + ' 小时' + (rm ? ' ' + rm + ' 分' : '');
+    var dd = Math.floor(h / 24), rh = h % 24;
+    return dd + ' 天' + (rh ? ' ' + rh + ' 小时' : '');
+  }
+  function timeHtml(x) {
+    var f = x.first_seen || '', l = x.last_seen || '';
+    if (!f) return esc(x.time_range || '');
+    var fD = f.slice(5, 10), fT = f.slice(11, 16);
+    var lD = l.slice(5, 10), lT = l.slice(11, 16);
+    var pairs = [];
+    if (f === l) {
+      pairs.push(['时间', fD + ' ' + fT]);
+    } else {
+      pairs.push(['首次', fD + ' ' + fT]);
+      pairs.push(['末次', lD === fD ? lT : lD + ' ' + lT]);
+      var ms = Date.parse(l.replace(' ', 'T')) - Date.parse(f.replace(' ', 'T'));
+      if (ms > 0) pairs.push(['持续', fmtDur(ms)]);
+    }
+    pairs.push(['次数', x.count + ' 次']);
+    return '<span class="tgrid">' + pairs.map(function (p) {
+      return '<span class="tcell"><i>' + p[0] + '</i>' +
+        '<span class="tv">' + p[1] + '</span></span>';
+    }).join('') + '</span>';
+  }
+  function sourceHtml(x) {
+    var list = x.sources || [];
+    if (!list.length) return esc(x.source || '');
+    var grid = '<div class="srcgrid">' + list.map(function (s) {
+      return '<span class="sip">' + esc(s.ip) + '</span>' +
+        '<span class="source-location">' + locHtml(s.loc || '未知') + '</span>';
+    }).join('') + '</div>';
+    var notes = [];
+    if ((x.cf_nodes || 0) > 0) {
+      notes.push('另有 ' + x.cf_nodes + ' 个经 Cloudflare 节点转发（看不到真实来源）');
+    }
+    var noteHtml = notes.length ? '<div class="srcnote">' + notes.join('；') + '</div>' : '';
+    if (list.length <= 4) return grid + noteHtml;
+    return '<details class="src-det"><summary>来源 IP（共 ' + list.length + ' 个）' + chev() + '</summary>' +
+      grid + '</details>' + noteHtml;
+  }
+
+
+  function render(j) {
+    document.getElementById('win').innerHTML =
+      '统计时段：' + j.window_start + ' ~ ' + j.window_end + '<br>生成于 ' + j.generated_at;
+
+    var html = gradeStrip((j.grades || {}).web);
+
+    if (j.error) {
+      html += '<p class="gline">本时段安全数据生成失败：' + esc(j.error) + '</p>';
+      document.getElementById('sec').innerHTML = html;
+      return;
+    }
+
+    // 事件计数（结论由上方评级卡承担；这里只算 KPI 与明细要用的数）
+    var incidents = (j.breach && j.breach.incidents) || [];
+    var warnCount = incidents.filter(function (x) { return x.verdict === '需留意' && !x.resolved; }).length;
+    var atkTotal = j.total_attack_requests || 0;
+    SITE_FRAC = {};
+    (j.site_stats || []).forEach(function (s) {
+      SITE_FRAC[s.site] = atkTotal > 0 ? s.count / atkTotal : 0;
+    });
+
+    // Tier 1: KPI 条（关键数字）—— 值为 0 的卡片不渲染，全为 0 时整条不渲染
+    var requestTier = j.total_attack_requests >= 1000 ? 2 : 1;
+    var topAttackerCount = (j.attackers || [])[0]?.count || 0;
+    var attackerTier = topAttackerCount >= 200 ? 2 : 1;
+    var eventTier = warnCount > 0 ? 2 : 1;
+    var tiles = [];
+    if ((j.total_attack_requests || 0) > 0) {
+      tiles.push(kpi(j.total_attack_requests, '攻击请求', 'zap',
+        requestTier));
+    }
+    if ((j.distinct_attacker_ips || 0) > 0) {
+      tiles.push(kpi(j.distinct_attacker_ips, '攻击者 IP', 'target',
+        attackerTier));
+    }
+    if (incidents.length > 0) {
+      tiles.push(kpi(incidents.length, '事件' + (warnCount > 0 ?
+        ' · <span class="kd">需留意 ' + warnCount + '</span>' : ''),
+        'alert', eventTier));
+    }
+    if ((j.site_stats || []).length > 0) {
+      tiles.push(kpi((j.site_stats || []).length, '受攻击站点', 'globe', 1));
+    }
+    if (tiles.length) {
+      html += '<div class="kpis">' + tiles.join('') + '</div>';
+    }
+
+    function webSection(id, glyph, title, count, tier, open) {
+      var status = tier === 2 ? 'bad danger' : tier === 0 ? 'ok' : 'warn';
+      return '<details class="hacc web-section' + (count > 0 ? '' : ' web-section-no-stat') + '" id="web-' + id + '"' + (open ? ' open' : '') + '>' +
+        '<summary><span class="hacc-head"><span class="hdisc">' + icon(glyph) +
+        '</span><span class="hacc-name">' + title + '</span>' + (count > 0 ? '<span class="hdot web-status ' + status + '" aria-hidden="true"></span>' : '') + '</span>' + chev() + '</summary>' +
+        '<div class="hacc-body web-section-body">';
+    }
+    html += webSection('sites', 'chart', '各站受攻击次数', j.total_attack_requests, requestTier, true);
+    // 各站受攻击次数（全来源：真实 IP 与 Cloudflare 节点转发都算）
+    var stats = j.site_stats || [];
+    if (stats.length) {
+      var ssMax = stats[0].count;
+      html += '<div class="sitestats"><h2 class="t2">' + tdisc('chart') + '各站受攻击次数</h2>';
+      stats.forEach(function (s) {
+        var pct = ssMax > 0 ? Math.max(2, Math.round(s.count * 100 / ssMax)) : 0;
+        html += '<div class="ss-row"><span class="ss-site">' + siteLine(s.site) + '</span>' +
+          '<span class="ss-track"><span class="ss-bar" style="width:' + pct + '%"></span></span>' +
+          '<span class="ss-count">' + s.count + '</span></div>';
+      });
+      html += '</div>';
+    }
+
+    if (!stats.length) html += '<p class="empty web-mobile-empty">本时段暂无站点攻击记录。</p>';
+    html += '</div></details>';
+    html += webSection('events', 'alert', '安全事件', incidents.length, eventTier, window.matchMedia('(min-width: 720px)').matches);
+    if (!(j.breach && j.breach.suspected && incidents.length)) html += '<p class="empty web-mobile-empty">本时段暂无安全事件。</p>';
+    if (j.breach && j.breach.suspected && incidents.length) {
+      html += '<h2 class="t2">' + tdisc('alert') + '安全事件</h2>';
+      html += '<div class="incidents">';
+      // 待解决的需留意置顶（站主 2026-11-24 定）：未核销需留意排最前，
+      // 其余（含已核销）保持原顺序——核销后自动回到原位置。
+      var ordered = incidents.filter(function (x) { return x.verdict === '需留意' && !x.resolved; })
+        .concat(incidents.filter(function (x) { return !(x.verdict === '需留意' && !x.resolved); }));
+      ordered.forEach(function (x) {
+        var warn = x.verdict === '需留意' && !x.resolved;
+        html += '<div class="incident"><div class="head">' +
+          '<span class="title">' + esc(x.title) + '</span>' +
+          '<span class="badge ' + (x.resolved ? 'done' : (warn ? 'warn' : 'ok')) + '">' + (x.resolved ? 'Resolved' : verdictHtml(x.verdict)) + '</span></div>' +
+          '<dl>' +
+          '<div class="row"><dt>Timeline</dt><dd>' + timeHtml(x) + '</dd></div>' +
+          '<div class="row"><dt>Source</dt><dd>' + sourceHtml(x) + '</dd></div>' +
+          '<div class="row"><dt>Target Site</dt><dd>' + siteLine(x.site) + '</dd></div>' +
+          '</dl>' +
+          '<div class="duel">' +
+          (x.intent ? '<div class="bub atk">' + '<svg class="btail" width="10" height="18" viewBox="0 0 10 18" aria-hidden="true"><path d="M9 0C9 7 6 13 1.5 16.5Q0 18 2 18H10V0Z" class="corner"/></svg>' + esc(x.intent) + '</div>' : '') +
+          (x.outcome ? '<div class="bub def">' + '<svg class="btail" width="10" height="18" viewBox="0 0 10 18" aria-hidden="true"><path d="M1 0C1 7 4 13 8.5 16.5Q10 18 8 18H0V0Z" class="corner"/></svg>' + esc(x.outcome) + '</div>' : '') +
+          (x.resolved ? '<div class="bub atk">' + '<svg class="btail" width="10" height="18" viewBox="0 0 10 18" aria-hidden="true"><path d="M9 0C9 7 6 13 1.5 16.5Q0 18 2 18H10V0Z" class="corner"/></svg>' + '✅ 已处理' + (x.resolution_note ? '，' + esc(x.resolution_note) : '') + '</div>' : '') +
+          '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div></details>';
+    if (j.note) {
+      html += '<div class="note">' + esc(j.note) + '</div>';
+    }
+
+    // 攻击者明细表（全量）
+    var rows = j.attackers || [];
+    function medalSvg(i) {
+      return '<img class="medal-img" src="medal-' + ['gold', 'silver', 'bronze'][i] + '.png" alt="">';
+    }
+  if (!rows.length) {
+      html += '<div class="xrefs">' +
+        '<p class="xh">IMAGE SOURCE</p>' +
+        '<p>1. Microsoft. (2002). <em>Internet Explorer 6 SP1</em> — the broken-image glyph (RT_BITMAP 2031, 14 \u00d7 16 px) in mshtml.dll 6.00.2800.1106, extracted from the offline installer (IEW2K_2.CAB) and used unmodified. Internet Archive. https://archive.org/details/microsoft-internet-explorer-6-sp1-iso</p>' +
+        '<p class="xh">REFERENCES</p>' +
+        '<p>1. Zhang, Y., et al. (2024). <em>Comparison study of hydrodynamic characteristics in different swimming modes of Carassius auratus</em>. Fishes, 9(9), 365. https://www.mdpi.com/2410-3888/9/9/365<br>' +
+        '2. Calovi, D. S., et al. (2018). <em>Disentangling and modeling interactions in fish with burst-and-coast swimming reveal distinct alignment and attraction behaviors</em>. PLOS Computational Biology, 14(1), e1005933. https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005933<br>' +
+        '3. Zienkiewicz, A., et al. (2015). <em>Data-driven stochastic modelling of zebrafish locomotion</em>. Journal of Mathematical Biology, 71, 1081\u20131005. https://pmc.ncbi.nlm.nih.gov/articles/PMC4598355/<br>' +
+        '4. Lecheval, V., et al. (2018). <em>Social conformity and propagation of information in collective U-turns of fish schools</em>. Proceedings of the Royal Society B, 285, 20180251. https://pmc.ncbi.nlm.nih.gov/articles/PMC5936730/<br>' +
+        '5. McHenry, M. J., &amp; Lauder, G. V. (2005). <em>The mechanical scaling of coasting in zebrafish (Danio rerio)</em>. Journal of Experimental Biology, 208, 2289\u20132302. https://journals.biologists.com/jeb/article/208/12/2289/15486<br>' +
+        '6. Li, G., et al. (2021). <em>Burst-and-coast swimmers optimize gait by adapting unique intrinsic cycle</em>. Communications Biology, 4, 40. https://www.nature.com/articles/s42003-020-01521-z</p>' +
+        '</div>';
+    }
+    html += webSection('ranking', 'target', '攻击者排名', j.distinct_attacker_ips, attackerTier, window.matchMedia('(min-width: 720px)').matches);
+    if (rows.length) {
+      html += '<h2 class="t2">' + tdisc('target') + '攻击者排名</h2>';
+      html += '<div class="table-wrap"><table><thead><tr>' +
+        '<th>排名</th><th>IP</th><th>位置</th><th class="count">攻击次数</th>' +
+        '<th>攻击的网站</th><th>主要攻击地址</th></tr></thead><tbody>';
+      rows.forEach(function (a, i) {
+        var siteKeys = Object.keys(a.sites || {});
+        var sites = siteKeys.map(function (s) {
+          return '<div>' + siteLine(s) +
+            (siteKeys.length > 1 ? ' · ' + a.sites[s] : '') + '</div>';
+        }).join('');
+        var paths = (a.top_paths || []).map(function (p) {
+          return '<div>' + esc(p.path) + ' <span class="more">×' + p.count + '</span></div>';
+        }).join('');
+        if (a.top_paths_more > 0) {
+          paths += '<div class="more">+' + a.top_paths_more + ' more</div>';
+        }
+        html += '<tr' + (i === 0 ? ' class="top1"' : '') + '>' +
+          '<td class="rank">' + (i < 3 ? medalSvg(i) : '') + (i + 1) + '</td>' +
+          '<td class="mono">' + esc(a.ip) + '</td>' +
+          '<td>' + (a.location ? locHtml(a.location) : '未知') + '</td>' +
+          '<td class="count">' + a.count + '</td>' +
+          '<td class="sites">' + sites + '</td>' +
+          '<td class="paths">' + paths + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+      // 手机端卡片版：同一份数据，窄屏时由媒体查询切换显示（桌面仍用表格）。
+      html += '<div class="acards">';
+      rows.forEach(function (a, i) {
+        var csites = Object.keys(a.sites || {}).map(function (s) {
+          return '<div>' + siteLine(s) + '</div>';
+        }).join('');
+        var cpaths = (a.top_paths || []).map(function (p) {
+          return '<div>' + esc(p.path) + ' <span class="more">\u00d7' + p.count + '</span></div>';
+        }).join('');
+        if (a.top_paths_more > 0) {
+          cpaths += '<div class="more">+' + a.top_paths_more + ' more</div>';
+        }
+        var ahead = '<div class="acard-head"><span class="acard-rank">#' + (i + 1) + '</span>' +
+          '<span class="mono acard-ip">' + esc(a.ip) + '</span>' +
+          '<span class="acard-count">' + a.count + '<small> 次</small></span></div>';
+        var aloc = '<div class="acard-loc">' + (a.location ? locHtml(a.location) : '未知') + '</div>';
+        html += '<div class="acard' + (i === 0 ? ' top1' : '') + (i < 3 ? ' has-medal' : '') + '">' +
+          (i < 3 ? medalSvg(i) : '') + '<div class="acard-content">' + ahead + aloc +
+          '<div class="acard-row"><span class="acard-k">\u653b\u51fb\u7684\u7f51\u7ad9</span>' +
+          '<span class="acard-v sites">' + csites + '</span></div></div>' +
+          '<details class="acard-det"><summary>\u4e3b\u8981\u653b\u51fb\u5730\u5740' + chev() + '</summary>' +
+          '<div class="paths">' + cpaths + '</div></details>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+
+    html += '</div></details>';
+    // IP封禁列表：与上方卡片同款菜单，放在攻击者排名后面
+    // 统计窗口只跨一天，时间只显示月-日 时:分（去年份、去秒）
+    function shortAt(at) {
+      var mm = String(at || '').match(/^\d{4}-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+      return mm ? mm[1] + '-' + mm[2] + ' ' + mm[3] + ':' + mm[4] : (at || '');
+    }
+    var ab = j.autobans || [];
+    if (ab.length) {
+      html += webSection('autobans', 'ban', 'IP封禁列表', ab.length, ab.length <= 3 ? 0 : ab.length >= 10 ? 2 : 1, window.matchMedia('(min-width: 720px)').matches);
+      html += '<h2 class="t2">' + tdisc('ban') + 'IP封禁列表</h2>';
+      html += '<div class="aban-rows">' + ab.map(function (b) {
+        return '<div><span class="mono">' + esc(b.ip) + '</span><span class="more">' + esc(shortAt(b.at)) + '</span></div>';
+      }).join('') + '</div>';
+      html += '</div></details>';
+    }
+    // 主机安全（一张卡片切换）
+    var hosts = j.hosts || {};
+    function hostStale(h) {
+      if (!h || !h.generated_at) return true;
+      var t = Date.parse(String(h.generated_at).replace(' ', 'T'));
+      return isNaN(t) || (Date.now() - t > 26 * 3600 * 1000);
+    }
+    var WHO_TAG_D = 'M 9.7 8.9 L 14.5 3.5 A 3.2 3.2 0 0 1 16.9 2.4 L 47.4 2.4 A 3.2 3.2 0 0 1 50.6 5.6 L 50.6 16.4 A 3.2 3.2 0 0 1 47.4 19.6 L 16.9 19.6 A 3.2 3.2 0 0 1 14.5 18.5 L 9.7 13.1 A 3.2 3.2 0 0 1 9.7 8.9 Z';
+    // Unattributable tag: the same luggage tag snapped across the middle —
+    // left half keeps the tip and punched hole, right half drops 0.8px and
+    // carries the FFF code; the two jagged edges face each other over a gap.
+    var WHO_TAG_L = 'M 9.7 8.9 L 14.5 3.5 A 3.2 3.2 0 0 1 16.9 2.4 L 31.5 2.4 L 34.4 6.8 L 31.2 10.2 L 34.2 13.8 L 31.4 17.2 L 32.8 19.6 L 16.9 19.6 A 3.2 3.2 0 0 1 14.5 18.5 L 9.7 13.1 A 3.2 3.2 0 0 1 9.7 8.9 Z';
+    var WHO_TAG_R = 'M 34.6 3.2 L 48.4 3.2 A 3.2 3.2 0 0 1 51.6 6.4 L 51.6 17.2 A 3.2 3.2 0 0 1 48.4 20.4 L 35.9 20.4 L 33.9 17.8 L 37.4 14.3 L 33.9 10.8 L 36.9 7.3 Z';
+    var WHO_CRACK_L = 'M 31.5 2.4 L 34.4 6.8 L 31.2 10.2 L 34.2 13.8 L 31.4 17.2 L 32.8 19.6';
+    var WHO_CRACK_R = 'M 34.6 3.2 L 36.9 7.3 L 33.9 10.8 L 37.4 14.3 L 33.9 17.8 L 35.9 20.4';
+    var WHO_CLS = { 'SPL': ' c-sun', 'YNG': ' c-yan', 'PEP': ' c-pep',
+      'BAK': ' c-bak', 'LAN': ' c-lan' };
+    function whoChip(w) {
+      if (!w) return '';
+      if (w === '⚠') {
+        return '<span class="who c-fff">' +
+          '<svg width="53" height="22" viewBox="0 0 53 22" aria-hidden="true">' +
+          '<path class="tagbody" mask="url(#who-hole)" d="' + WHO_TAG_L + '"/>' +
+          '<path class="tagbody" d="' + WHO_TAG_R + '"/>' +
+          '<path class="tagcrack" d="' + WHO_CRACK_L + '"/>' +
+          '<path class="tagcrack" d="' + WHO_CRACK_R + '"/>' +
+          '<text x="42.8" y="11.8" text-anchor="middle" ' +
+          'dominant-baseline="central">FFF</text>' +
+          '</svg></span>';
+      }
+      var cls = WHO_CLS[w] || '';
+      return '<span class="who' + cls + '">' +
+        '<svg width="53" height="22" viewBox="0 0 53 22" aria-hidden="true">' +
+        '<path class="tagbody" mask="url(#who-hole)" d="' + WHO_TAG_D + '"/>' +
+        '<text x="33.8" y="11" text-anchor="middle" ' +
+        'dominant-baseline="central">' + esc(w) + '</text>' +
+        '</svg></span>';
+    }
+    function recordTime(first, last) {
+      var f = String(first || ''), l = String(last || '');
+      // Same-day ranges use the date already shown in the report header.
+      if (/^\d{2}-\d{2} /.test(f) && f.slice(0, 6) === l.slice(0, 6)) {
+        f = f.slice(6); l = l.slice(6);
+      }
+      return '<span class="record-time" title="' + esc((first || '') + ' → ' + (last || '')) + '">' +
+        esc(f) + (l && l !== f ? '–' + esc(l) : '') + '</span>';
+    }
+    function hostRecord(x, extra, timed, plainLocation) {
+      return '<div class="hip record' + (x.anomaly ? ' record-alert' : '') + '">' +
+        '<span class="mono record-ip">' + esc(x.ip) + '</span>' +
+        '<span class="record-count">' + esc(x.count) + '<small> 次</small></span>' +
+        '<span class="record-meta">' + (x.user ? '<span class="mono">' + esc(x.user) + '</span>' : '') + (x.loc ? locDisp(x, plainLocation) : '') +
+        (timed ? recordTime(x.first, x.last) : '') + '</span>' +
+        (extra ? '<span class="record-tags">' + extra + '</span>' : '') + '</div>';
+    }
+    function hostBody(h) {
+      if (hostStale(h)) {
+        return '<p class="empty">数据过期 / 暂无数据</p>';
+      }
+      var s = '';
+      var ft = (h.ssh_failed_top || []).map(function (x) {
+        return hostRecord(x, x.known === false ? '<span class="unk">Unknown</span>' : '', false);
+      }).join('');
+      if (h.authkeys_alert) {
+        var aa = h.authkeys_alert;
+        var aParts = [];
+        var aName = function (a) {
+          if (a && a.who && a.who !== '⚠') {
+            return esc(a.who);
+          }
+          return whoChip('⚠');
+        };
+        var aTot = function (arr) {
+          return (arr || []).reduce(function (s2, a) {
+            return s2 + (a && a.count ? a.count : 1);
+          }, 0);
+        };
+        if (aa.added && aa.added.length) {
+          aParts.push('新增 ' + aTot(aa.added) + ' 把（' +
+            aa.added.map(aName).join('、') + '）');
+        }
+        if (aa.removed && aa.removed.length) {
+          aParts.push('移除 ' + aTot(aa.removed) + ' 把（' +
+            aa.removed.map(aName).join('、') + '）');
+        }
+        s += '<div class="hrow"><span class="hk">' + icon('key') + '授权密钥</span><span class="hv">' +
+          '授权密钥有变动：' + aParts.join(' / ') +
+          (aa.changed_at ? '（文件时间 ' + esc(aa.changed_at) + '）' : '') +
+          '</span></div>';
+      }
+      if ((h.ssh_failed || 0) > 0) {
+        s += '<div class="hrow"><span class="hk">' + icon('xcircle') + 'SSH 失败</span><span class="hv"><b>' +
+          h.ssh_failed + '</b> 次' + (ft ? '<br>' + ft : '') + '</span></div>';
+      }
+      var okIndiv = [], okGroups = {}, okGSeq = [];
+      (h.ssh_ok || []).forEach(function (x) {
+        if (x.bulk && x.known) {
+          if (!okGroups[x.bulk]) { okGroups[x.bulk] = []; okGSeq.push(x.bulk); }
+          okGroups[x.bulk].push(x);
+        } else { okIndiv.push(x); }
+      });
+      var ok = okIndiv.reduce(function (a, x) { return a + (x.count || 0); }, 0);
+      if (h.ssh_anomaly > 0) {
+        s += '<div class="hrow"><span class="hk">' + icon('alert') + '异常登录</span><span class="hv">' +
+          '<b>' + h.ssh_anomaly +
+          '</b> 次成功登录未通过已知密钥验证</span></div>';
+      }
+      if (ok > 0) {
+        s += '<div class="hrow"><span class="hk">' + icon('login') + 'SSH 成功登录</span><span class="hv"><b>' +
+          ok + '</b> 次</span></div>';
+      }
+      var p = h.panel || {};
+      var pips = (p.ok_ips || []).map(function (x) {
+        return hostRecord(x, x.known === false ? '<span class="unk">Unknown</span>' : '', false);
+      }).join('');
+      var pparts = [];
+      if ((p.ok || 0) > 0 || pips) {
+        pparts.push('登录成功 <b>' + (p.ok || 0) + '</b> 次' + (pips ? '<br>' + pips : ''));
+      }
+      if ((p.failed || 0) > 0) {
+        pparts.push('登录失败 <b>' + (p.failed || 0) + '</b> 次');
+      }
+      if (pparts.length && !window.__SAMPLE__) {
+        s += '<div class="hrow"><span class="hk">' + icon('monitor') + '宝塔面板</span><span class="hv">' +
+          pparts.join('<br>') + '</span></div>';
+      }
+      var f = h.fail2ban || {};
+      if ((f.banned_now || 0) > 0 || (f.banned_window || 0) > 0) {
+        s += '<div class="hrow"><span class="hk">' + icon('ban') + 'fail2ban</span><span class="hv">当前封禁 <b>' +
+          (f.banned_now || 0) + '</b> 个 IP · 本时段封禁 <b>' + (f.banned_window || 0) +
+          '</b> 次</span></div>';
+      }
+      if (typeof h.waf_blocked === 'number' && h.waf_blocked > 0 && !window.__SAMPLE__) {
+        s += '<div class="hrow"><span class="hk">' + icon('shield') + 'WAF 拦截</span><span class="hv"><b>' +
+          h.waf_blocked + '</b> 次</span></div>';
+      }
+      var ev = h.ssh_events || [];
+      if (ev.length) {
+        var mtxt = function (m) {
+          return '<span class="mchip">' + (m === 'key' ? 'KEY' : 'PWD') + '</span>';
+        };
+        var mwho = function (ok, method, who) {
+          // A letter tag already identifies the key/channel: on a key
+          // success it replaces the KEY chip instead of duplicating it.
+          // A PWD chip on a (password) success stays — it is the alarm.
+          if (ok && who && method === 'key') return whoChip(who);
+          return mtxt(method) + (who ? whoChip(who) : '');
+        };
+        var rtxt = function (e) {
+          if (e.anomaly) return '<span class="anom">Anomaly</span>';
+          return e.ok ? '<span class="okb">Success</span>' : '<span class="unk">Failed</span>';
+        };
+        var eAnom = [], eFails = [], eStrange = [], eIndiv = [], eGroups = {}, eGSeq = [];
+        ev.forEach(function (e) {
+          if (e.ok && e.anomaly) { eAnom.push(e); return; }
+          if (!e.ok) { eFails.push(e); return; }
+          if (!e.known) { eStrange.push(e); return; }
+          if (e.bulk) {
+            var gk = e.bulk + '|' + e.method + '|' + (e.who || '');
+            if (!eGroups[gk]) {
+              eGroups[gk] = { bulk: e.bulk, who: e.who,
+                              method: e.method, mem: [] };
+              eGSeq.push(gk);
+            }
+            eGroups[gk].mem.push(e);
+          } else { eIndiv.push(e); }
+        });
+        var eOrdered = eAnom.concat(eFails, eStrange, eIndiv);
+        var erows = eOrdered.map(function (e) {
+          return '<tr><td class="mono">' + esc(e.ip) + '</td>' +
+            '<td>' + locDisp(e) +
+            (e.note ? ' <span class="more">' + (e.anomaly ? '' : '留意·') + esc(e.note) + '</span>' : '') +
+            '</td>' +
+            '<td class="mono">' + esc(e.user || '') + '</td>' +
+            '<td class="mcell">' + mwho(e.ok, e.method, e.who) + '</td>' +
+            '<td>' + rtxt(e) + '</td>' +
+            '<td class="count">' + e.count + '</td>' +
+            '<td>' + recordTime(e.first, e.last) + '</td></tr>';
+        }).join('');
+        if (eOrdered.length) s += '<div class="hsub">' + tdisc('key') + 'SSH 登录明细</div>' +
+          '<div class="table-wrap"><table><thead><tr>' +
+          '<th>IP</th><th>归属地</th><th>用户名</th><th>方式</th><th>结果</th>' +
+          '<th class="count">次数</th><th>时间</th></tr></thead>' +
+          '<tbody>' + erows + '</tbody></table></div>';
+        var ecards = eOrdered.map(function (e) {
+          return '<div class="acard login-card">' +
+            '<div class="acard-head"><span class="acard-ip mono">' + esc(e.ip) + '</span>' +
+            '<span class="acard-count">' + esc(e.count) + '<small> 次</small></span></div>' +
+            '<div class="login-meta"><span>' + (e.loc ? locDisp(e) : '未知位置') + '</span>' +
+            recordTime(e.first, e.last) + '</div>' +
+            '<div class="login-tags">' + rtxt(e) + mwho(e.ok, e.method, e.who) +
+            (e.user ? '<span class="more"><span class="mono">' + esc(e.user) + '</span></span>' : '') + '</div>' +
+            (e.note ? '<p class="login-note">' + (e.anomaly ? '' : '留意·') + esc(e.note) + '</p>' : '') +
+            '</div>';
+        }).join('');
+        if (eOrdered.length) s += '<div class="acards">' + ecards + '</div>';
+        var cityOf = function (loc) { var i = loc.indexOf(' · '); return i >= 0 ? loc.slice(i + 3) : loc; };
+        eGSeq.forEach(function (gk) {
+          var g = eGroups[gk];
+          var tot = g.mem.reduce(function (a, x) { return a + x.count; }, 0);
+          var mem = g.mem.map(function (e) {
+            return hostRecord(e, '', true, true);
+          }).join('');
+          var domC = '', domN = 0, cc = {};
+          g.mem.forEach(function (e) { var c = (e.loc || '').split(' · ')[0]; if (c) { cc[c] = (cc[c] || 0) + (e.count || 0); if (cc[c] > domN) { domN = cc[c]; domC = c; } } });
+          var domIso = domC ? COUNTRY_ISO[domC] : null;
+          var domFlag = domIso ? ' ' + flagHtml(domIso, domC) : '';
+          if (!domIso) {
+            var ac2 = {}, appD = '', appDN = 0;
+            g.mem.forEach(function (e) { if (e.app) { ac2[e.app] = (ac2[e.app] || 0) + (e.count || 0); if (ac2[e.app] > appDN) { appDN = ac2[e.app]; appD = e.app; } } });
+            if (appD) domFlag = ' ' + appIcon(appD);
+          }
+          s += '<details class="hdet"><summary>Agent直连 ' + esc(g.bulk) + domFlag +
+            ' · ' + mwho(true, g.method, g.who) +
+            ' <span class="more">×' + tot + ' · ' + g.mem.length +
+            ' 个 IP</span>' + chev() + '</summary>' + mem + '</details>';
+        });
+      }
+      return s;
+    }
+    function hostSection(id, h, open) {
+      var name = (id === 'host1' ? 'Host 1' : 'Host 2');
+      var grade = (j.grades || {})[id];
+      var parts = [];
+      var badge = '';
+      var staleMark = '';
+      if (!h) {
+        staleMark = ' <span class="hstale">暂无数据</span>';
+      } else {
+        var okTot = (h.ssh_ok || []).reduce(function (a, x) {
+          return a + (x.count || 0);
+        }, 0);
+        parts.push('SSH 成功 ' + okTot);
+        if ((h.ssh_failed || 0) > 0) {
+          parts.push('失败 ' + h.ssh_failed);
+        }
+        var hp2 = h.panel || {};
+        if (!window.__SAMPLE__ && (hp2.ok || 0) > 0) parts.push('面板 ' + (hp2.ok || 0));
+        var hf = h.fail2ban || {};
+        var fbN = (hf.banned_window || 0) > 0 ? hf.banned_window : (hf.banned_now || 0);
+        if (fbN > 0) {
+          parts.push('fail2ban ' + fbN);
+        }
+        if (typeof h.waf_blocked === 'number' && !window.__SAMPLE__) {
+          parts.push('WAF 拦截 ' + h.waf_blocked);
+        }
+        if ((h.ssh_anomaly || 0) > 0) {
+          badge = ' <span class="anom">Anomaly ' + h.ssh_anomaly + '</span>';
+        }
+        if (hostStale(h)) {
+          staleMark = ' <span class="hstale">数据过期</span>';
+        }
+      }
+      var dotCls = 'hdot';
+      if (!h || hostStale(h)) dotCls += ' stale';
+      if (h && ((h.ssh_anomaly || 0) > 0 || h.authkeys_alert)) dotCls = 'hdot bad';
+      if (window.__SAMPLE__ && h && grade) dotCls = 'hdot' + (grade.level === 'D' ? ' bad' : grade.level === 'C' ? ' warn' : '');
+      return '<details class="hacc" id="ha-' + id + '"' + (open ? ' open' : '') + '>' +
+        '<summary><span class="hacc-head">' +
+        '<span class="hdisc">' + icon('server') + '</span>' +
+        '<span class="hacc-name">' + name + '</span>' +
+        '<span class="' + dotCls + '"></span>' +
+        (parts.length ? '<span class="hacc-sum">' + esc(parts.join(' · ')) + '</span>' : '') +
+        '</span>' +
+        chev() +
+        '</summary>' +
+        '<div class="hacc-body">' + gradeStrip(grade) + hostBody(h) + '</div></details>';
+    }
+    var hostHtml;
+    if (hosts.host1 || hosts.host2) {
+      var fresh = [];
+      ['host1', 'host2'].forEach(function (id) {
+        if (hosts[id] && !hostStale(hosts[id])) fresh.push(hosts[id]);
+      });
+      var hkpis = '';
+      if (fresh.length) {
+        var okS = 0, fS = 0, aS = 0, alS = 0, pS = 0, pfS = 0, wS = 0;
+        fresh.forEach(function (h) {
+          okS += (h.ssh_ok || []).reduce(function (a, x) {
+            return a + (x.count || 0);
+          }, 0);
+          fS += h.ssh_failed || 0;
+          aS += h.ssh_anomaly || 0;
+          if (h.authkeys_alert) alS++;
+          pS += (h.panel || {}).ok || 0;
+          pfS += (h.panel || {}).failed || 0;
+          if (typeof h.waf_blocked === 'number') wS += h.waf_blocked;
+        });
+        var htiles = [];
+        if (okS > 0) htiles.push(kpi(okS, 'SSH 成功', 'login', 0));
+        if (fS > 0) htiles.push(kpi(fS, 'SSH 失败', 'xcircle', fS >= 10 ? 2 : 1));
+        if (!window.__SAMPLE__ && pS > 0) htiles.push(kpi(pS, '面板登录', 'monitor', pfS > 0 ? 1 : 0));
+        if (!window.__SAMPLE__ && wS > 0) htiles.push(kpi(wS, 'WAF 拦截', 'shield', 1));
+        if (aS > 0) htiles.push(kpi(aS, '异常登录', 'alert', 2));
+        if (alS > 0) htiles.push(kpi(alS, '密钥变动', 'key', 2));
+        if (htiles.length) {
+          hkpis = '<div class="kpis">' + htiles.join('') + '</div>';
+        }
+      }
+      hostHtml = hkpis + hostSection('host1', hosts.host1, true) +
+        (window.__SAMPLE__ ? '' : hostSection('host2', hosts.host2, window.matchMedia('(min-width: 720px)').matches));
+    } else {
+      hostHtml = '<p class="empty">暂无主机安全数据。</p>';
+    }
+
+    document.getElementById('sec').innerHTML =
+      '<div class="vtabs">' +
+      '<button type="button" id="vt-web" onclick="viewTab(\'web\')">' + icon('globe') + '网站安全</button>' +
+      '<button type="button" id="vt-host" onclick="viewTab(\'host\')">' + icon('server') + '主机安全</button>' +
+      '</div>' +
+      '<div id="view-web">' + html + '</div>' +
+      '<div id="view-host">' + hostHtml + '</div>';
+    viewTab(location.hash === '#host' ? 'host' : 'web');
+  }
+
+  function viewTab(v) {
+    var w = document.getElementById('view-web');
+    var h = document.getElementById('view-host');
+    if (!w || !h) return;
+    w.style.display = v === 'web' ? '' : 'none';
+    h.style.display = v === 'host' ? '' : 'none';
+    var tw = document.getElementById('vt-web');
+    var th = document.getElementById('vt-host');
+    if (tw) tw.className = v === 'web' ? 'on' : '';
+    if (th) th.className = v === 'host' ? 'on' : '';
+    try {
+      history.replaceState(null, '', '#' + v);
+    } catch (e) {
+      location.hash = v;
+    }
+  }
+
+  // Zero card toy: tapping the little IE red X in the empty tank sets
+  // it swimming left and right like a fish, forever. Once it swims,
+  // further taps do nothing.
+  (function () {
+    document.addEventListener('click', function (e) {
+      var fish = e.target.closest ? e.target.closest('.grade.zero .gfish') : null;
+      if (!fish || fish.classList.contains('swim')) return;
+      var r = fish.getBoundingClientRect();
+      var x = e.clientX - r.left, y = e.clientY - r.top;
+      // The X is 14x16 at (110, 84) in the 229x135 slot; a few px of
+      // slack so a fingertip still counts as hitting it.
+      if (x >= 104 && x <= 130 && y >= 78 && y <= 106) fish.classList.add('swim');
+    });
+  })();
+
+  // Playful gauge: the slider dot can be dragged (mouse or touch) and
+  // the grade shown above follows the band under the dot; after 5 s
+  // without interaction the dot glides back to the true grade. Pure
+  // play - the factual lines under the gauge never change.
+  (function () {
+    var POS = { A: 12.5, B: 37.5, C: 62.5, D: 87.5 };
+    function bandOf(p) { return p < 25 ? 'A' : p < 50 ? 'B' : p < 75 ? 'C' : 'D'; }
+    function show(gradeEl, letter) {
+      gradeEl._shown = letter;
+      var disc = gradeEl.querySelector('.gdisc');
+      var word = gradeEl.querySelector('.gword');
+      if (disc) { disc.textContent = letter; disc.className = 'gdisc ' + letter; }
+      if (word) { word.textContent = GRADE_WORDS[letter]; }
+      var fish = gradeEl.querySelector('.gfish');
+      if (fish) fish.style.backgroundPosition = FISH_POS[letter];
+      gradeEl.classList.remove('A', 'B', 'C', 'D');
+      gradeEl.classList.add(letter);
+    }
+    // cubic-bezier(0.34, 1.25, 0.64, 1): fast out, a breath of
+    // overshoot, soft landing - solved parametrically like CSS does.
+    function bezEase(x) {
+      var x1 = 0.34, y1 = 1.25, x2 = 0.64, y2 = 1;
+      var cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+      var cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+      var sx = function (t) { return ((ax * t + bx) * t + cx) * t; };
+      var sy = function (t) { return ((ay * t + by) * t + cy) * t; };
+      var t = x;
+      for (var i = 0; i < 5; i++) {
+        var err = sx(t) - x;
+        if (Math.abs(err) < 1e-4) break;
+        var d = (3 * ax * t + 2 * bx) * t + cx;
+        if (Math.abs(d) < 1e-4) break;
+        t -= err / d;
+      }
+      return sy(t);
+    }
+    function pctOf(bar, clientX) {
+      var r = bar.getBoundingClientRect();
+      var p = (clientX - r.left) * 100 / r.width;
+      return Math.max(0, Math.min(100, p));
+    }
+    document.addEventListener('pointerdown', function (e) {
+      var bar = e.target.closest ? e.target.closest('.gbar') : null;
+      if (!bar) return;
+      var gradeEl = bar.closest('.grade');
+      if (gradeEl && gradeEl.classList.contains('zero')) return;
+      var mark = bar.querySelector('.gmark');
+      if (!gradeEl || !mark) return;
+      var real = gradeEl.getAttribute('data-real');
+      if (!real || !POS[real]) return;
+      e.preventDefault();
+      if (gradeEl._glide) cancelAnimationFrame(gradeEl._glide);
+      if (gradeEl._timer) clearTimeout(gradeEl._timer);
+      if (gradeEl._fadeT) {
+        clearTimeout(gradeEl._fadeT);
+        gradeEl._fadeT = null;
+        gradeEl.classList.remove('gfade');
+      }
+      try { bar.setPointerCapture(e.pointerId); } catch (err) {}
+      var move = function (ev) {
+        var p = pctOf(bar, ev.clientX);
+        mark.style.left = p + '%';
+        show(gradeEl, bandOf(p));
+      };
+      move(e);
+      var up = function () {
+        bar.removeEventListener('pointermove', move);
+        bar.removeEventListener('pointerup', up);
+        bar.removeEventListener('pointercancel', up);
+        gradeEl._timer = setTimeout(function () {
+          var from = parseFloat(mark.style.left);
+          if (isNaN(from)) from = POS[real];
+          var to = POS[real];
+          var t0 = null;
+          var step = function (ts) {
+            if (!t0) t0 = ts;
+            var k = Math.min(1, (ts - t0) / 800);
+            var ease = bezEase(k);
+            var p = from + (to - from) * ease;
+            mark.style.left = p + '%';
+            if (k < 1) { gradeEl._glide = requestAnimationFrame(step); }
+            else {
+              gradeEl._glide = null;
+              // 松手时已滑回真实等级：鱼和字都不动，不闪（站主 2026-11-23 定）
+              if (gradeEl._shown !== real) {
+                gradeEl.classList.add('gfade');
+                gradeEl._fadeT = setTimeout(function () {
+                  show(gradeEl, real);
+                  gradeEl.classList.remove('gfade');
+                  gradeEl._fadeT = null;
+                }, 190);
+              }
+            }
+          };
+          gradeEl._glide = requestAnimationFrame(step);
+        }, 5000);
+      };
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', up);
+      bar.addEventListener('pointercancel', up);
+    });
+  })();
+
+  function genSample() {
+    function ri(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function p2(n) { return String(n).padStart(2, '0'); }
+    var raw = new Date();
+    var now = new Date(raw.getTime() + raw.getTimezoneOffset() * 60000 + 8 * 3600000);
+    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 0, 0);
+    if (now < start) start = new Date(start.getTime() - 86400000);
+    function fdt(d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()); }
+    function fdtm(d) { return fdt(d).slice(0, 16); }
+    function fmd(d) { return p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+    function randTime() { return new Date(start.getTime() + Math.random() * Math.max(60000, now.getTime() - start.getTime())); }
+    var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var LOCS = ['United States · Ashburn', 'Germany · Frankfurt', 'France · Paris', 'Netherlands · Amsterdam', 'Japan · Tokyo', 'Canada · Toronto', 'United Kingdom · London', 'Australia · Sydney', 'Brazil · Sao Paulo', 'India · Mumbai', 'South Korea · Seoul', 'Poland · Warsaw', 'Spain · Madrid', 'Italy · Milan', 'Sweden · Stockholm', 'Indonesia · Jakarta', 'Vietnam · Hanoi', 'Thailand · Bangkok', 'Turkey · Istanbul', 'Singapore · Singapore'];
+    var PUB1 = [45, 51, 64, 66, 77, 78, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 103, 104, 128, 129, 134, 138, 139, 141, 142, 144, 148, 149, 150, 151, 152, 157, 158, 159, 160, 162, 164, 165, 166, 167, 168, 170, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 205, 206, 207, 208, 209, 210, 211, 212, 213, 216, 217, 218, 219, 220, 221, 222];
+    function pubIp() { var a = pick(PUB1), b = ri(0, 255); if (a === 198 && (b === 18 || b === 19)) b = 97; return a + '.' + b + '.' + ri(0, 255) + '.' + ri(1, 254); }
+    function privNet() { var kind = pick(['10', '172', '192']); if (kind === '10') return [10, ri(0, 255), ri(0, 255)]; if (kind === '172') return [172, ri(16, 31), ri(0, 255)]; var c; do { c = ri(0, 255); } while (c === 193 || c === 194); return [192, 168, c]; } /* private ranges excluded above */
+    function ipOf(n, last) { return n[0] + '.' + n[1] + '.' + n[2] + '.' + last; }
+    function distribute(n, parts, min) {
+      var w = [], sw = 0, out = [], i2, rem = n - min * parts, given = 0, left, ix2;
+      for (i2 = 0; i2 < parts; i2++) { w.push(Math.random() + 0.15); sw += w[i2]; }
+      for (i2 = 0; i2 < parts; i2++) { var add = Math.floor(rem * w[i2] / sw); out.push(min + add); given += add; }
+      left = rem - given; ix2 = 0;
+      while (left > 0) { out[ix2 % parts]++; left--; ix2++; }
+      return out;
+    }
+    var ALL = ['example.com', 'blog.example.com', 'shop.example.com', 'api.example.com', 'docs.example.com', 'support.example.com'];
+    var sites = ALL.slice();
+    for (var i = sites.length - 1; i > 0; i--) { var k = Math.floor(Math.random() * (i + 1)); var tmp = sites[i]; sites[i] = sites[k]; sites[k] = tmp; }
+    // 演示等级与现行口径一一对应（站主 2026-11-24 改定）：网站只有两个
+    // 判定——封禁线（未封禁重度 IP 数 >5 B、>10 C、>15 D）与事件处理
+    // （需留意总数 1-3 B、4-6 C、7+ D；未核销需留意有即 D）。先按这两
+    // 个判定抽数，再生成攻击者与事件；事件总数不参与评级，可任意。
+    var LV = ['A', 'B', 'C', 'D'];
+    var wl = pick(LV);
+    var heavyN, incN, warnN = 0, warnOpen = false;
+    if (wl === 'A') { heavyN = ri(0, 5); incN = ri(0, 10); }
+    else if (wl === 'B') {
+      if (Math.random() < 0.5) { heavyN = ri(6, 10); incN = ri(0, 10); }
+      else { heavyN = ri(0, 5); warnN = ri(1, 3); incN = warnN + ri(0, 8); }
+    } else if (wl === 'C') {
+      if (Math.random() < 0.5) { heavyN = ri(11, 15); warnN = ri(0, 3); incN = warnN + ri(0, 10); }
+      else { heavyN = ri(0, 10); warnN = ri(4, 6); incN = warnN + ri(0, 8); }
+    } else {
+      var drv = pick(['heavy', 'warn7', 'warn']);
+      if (drv === 'heavy') { heavyN = ri(16, 20); warnN = ri(0, 3); incN = warnN + ri(0, 12); }
+      else if (drv === 'warn7') { heavyN = ri(0, 10); warnN = ri(7, 9); incN = warnN + ri(0, 8); }
+      else { heavyN = ri(0, 5); warnN = ri(1, 3); incN = warnN + ri(0, 8); warnOpen = true; }
+    }
+    var acounts = [];
+    var hi;
+    for (hi = 0; hi < heavyN; hi++) acounts.push(ri(100, 600));
+    for (hi = 0; hi < ri(2, 6); hi++) acounts.push(ri(3, 90));
+    for (hi = acounts.length - 1; hi > 0; hi--) {
+      var hj = Math.floor(Math.random() * (hi + 1));
+      var ht = acounts[hi]; acounts[hi] = acounts[hj]; acounts[hj] = ht;
+    }
+    var total = acounts.reduce(function (a, b) { return a + b; }, 0);
+    sites = sites.slice(0, ri(2, 6));
+    var scounts = distribute(total, sites.length, 1);
+    total = scounts.reduce(function (a, b) { return a + b; }, 0);
+    var siteStats = sites.map(function (s, ix) { return { site: s, count: scounts[ix] }; }).sort(function (a, b) { return b.count - a.count; });
+    var PATHS = ['/wp-login.php', '/wp-admin/', '/xmlrpc.php', '/.env', '/.git/config', '/phpmyadmin/', '/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php', '/shell.php', '/admin/login', '/wp-content/about.php', '/boaform/admin/formLogin', '/actuator/env', '/config.json', '/backup.zip', '/db.sql', '/api/.env', '/solr/admin/', '/manager/html'];
+    var UAS = ['Go-http-client/2.0', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'curl/7.88.1', 'python-requests/2.31.0', 'Mozilla/5.0 (compatible; zgrab/0.x)'];
+    var attackers = acounts.map(function (c) {
+      var t1 = randTime(), t2 = new Date(t1.getTime() + ri(30, 7200) * 1000);
+      if (t2 > now) t2 = now;
+      var mySites = {}; var s1 = pick(siteStats).site; mySites[s1] = c;
+      if (Math.random() < 0.4 && c >= 3) { var s2 = pick(siteStats).site; if (s2 !== s1) { var part = ri(1, Math.floor(c / 3)); mySites[s1] = c - part; mySites[s2] = part; } }
+      var nk = c === 1 ? 1 : c === 2 ? ri(1, 2) : ri(2, Math.min(5, c));
+      var pcounts = distribute(c, nk, 1), usedP = {}, plist = [], q;
+      while (plist.length < nk) { var pp2 = pick(PATHS); if (usedP[pp2]) continue; usedP[pp2] = 1; plist.push(pp2); }
+      var allp = plist.map(function (pp3, ip3) { return { path: pp3, count: pcounts[ip3] }; }).sort(function (a, b) { return b.count - a.count; });
+      var shownp = allp.slice(0, 3);
+      var morep = allp.slice(3).reduce(function (a, b) { return a + b.count; }, 0);
+      return { ip: pubIp(), location: pick(LOCS), count: c, sites: mySites, top_paths: shownp, top_paths_more: morep, first_seen: fdt(t1), last_seen: fdt(t2) };
+    }).sort(function (a, b) { return b.count - a.count; });
+    var TPLS = [
+      { sig: 'wordpress', title: 'WordPress 探测', path: '/wp-login.php', intent: '他在找 WordPress 的登录入口和已知漏洞，想确认目标站点是不是用 WordPress 建的；这些入口并不存在。', outcome: '服务器把他挡了回去，他什么都没拿到。4xx 的意思是“你的请求有问题”，服务器直接拒收。' },
+      { sig: 'env-leak', title: '配置文件窃取', path: '/.env', intent: '他在试探 .env、.git 等敏感文件能不能直接下载，想拿到数据库口令或密钥。', outcome: '敏感文件要么被拦截，要么根本不存在，他什么都没拿到。.env、.git 这种文件要是能随便下载，数据库密码可就全漏了。' },
+      { sig: 'webshell', title: '木马文件试探', path: '/shell.php', intent: '他在逐个试常见的木马与后门文件名，想确认服务器上是否已被植入后门。', outcome: '这些文件在服务器上根本不存在，他白忙活一场。木马得先种进来才有用，现找现种可来不及。' },
+      { sig: 'rce-probe', title: '远程代码执行探测', path: '/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php', intent: '他在试探已知的远程代码执行漏洞入口，想直接在服务器上运行命令。', outcome: '目标组件并不存在，他的请求全被挡下了。远程代码执行得先找到能执行代码的入口，没入口就是白搭。' },
+      { sig: 'admin-scan', title: '后台入口扫描', path: '/admin/login', intent: '他在批量扫描常见的后台与管理入口路径，想找到可以下手的登录页。', outcome: '他扫到的都是不存在的路径，没发现真实后台。后台入口要是这么好扫，站长也不用吃饭了。' }
+    ];
+    var tpls = TPLS.slice();
+    for (var ti = tpls.length - 1; ti > 0; ti--) { var tk = Math.floor(Math.random() * (ti + 1)); var tt = tpls[ti]; tpls[ti] = tpls[tk]; tpls[tk] = tt; }
+    var incSpecs = [];
+    for (var ii = 0; ii < incN; ii++) incSpecs.push(tpls[ii % tpls.length]);
+    var incidents = incSpecs.map(function (tp, ix) {
+      var src = attackers[ix % attackers.length];
+      var t1 = randTime(), t2 = new Date(t1.getTime() + ri(20, 3000) * 1000);
+      if (t2 > now) t2 = now;
+      var icount = wl === 'A' ? ri(1, 3) : wl === 'B' ? ri(5, 60) : wl === 'C' ? ri(20, 180) : ri(10, 150);
+      var srcs = [{ ip: src.ip, loc: src.location }];
+      var nsrc = ri(2, 4), usedS = {};
+      usedS[src.ip] = 1;
+      while (srcs.length < nsrc && srcs.length < attackers.length) {
+        var s2 = pick(attackers);
+        if (usedS[s2.ip]) continue;
+        usedS[s2.ip] = 1;
+        srcs.push({ ip: s2.ip, loc: s2.location });
+      }
+      var raw = src.ip + ' - - [' + p2(t1.getDate()) + '/' + MON[t1.getMonth()] + '/' + t1.getFullYear() + ':' + p2(t1.getHours()) + ':' + p2(t1.getMinutes()) + ':' + p2(t1.getSeconds()) + ' +0800] "GET ' + tp.path + ' HTTP/1.1" ' + pick(['403', '404', '444']) + ' 0 "-" "' + pick(UAS) + '"';
+      return { signature: tp.sig, title: tp.title, site: pick(siteStats).site, count: icount, first_seen: fdt(t1), last_seen: fdt(t2), time_range: fdt(t1) + ' ~ ' + fdt(t2).slice(11), source: '真实 IP：' + src.ip + '（' + src.location + '）', intent: tp.intent, outcome: tp.outcome, verdict: '未得手', raw_example: raw, sources: srcs, sources_total: srcs.length, cf_nodes: ri(0, 3) };
+    });
+    incidents.forEach(function (inc, ix) {
+      var atk = attackers[ix % attackers.length];
+      var pth = atk.top_paths[0].path;
+      inc.site = Object.keys(atk.sites)[0];
+      var ttl = '路径扫描';
+      if (pth.indexOf('wp-') >= 0 || pth.indexOf('xmlrpc') >= 0) ttl = 'WordPress 探测';
+      else if (pth.indexOf('.env') >= 0 || pth.indexOf('.git') >= 0) ttl = '配置文件窃取';
+      else if (pth.indexOf('shell') >= 0) ttl = '木马文件试探';
+      else if (pth.indexOf('phpunit') >= 0 || pth.indexOf('eval') >= 0 || pth.indexOf('actuator') >= 0) ttl = '远程代码执行探测';
+      else if (pth.indexOf('admin') >= 0 || pth.indexOf('login') >= 0 || pth.indexOf('phpmyadmin') >= 0 || pth.indexOf('manager') >= 0) ttl = '后台入口扫描';
+      inc.title = ttl;
+      inc.intent = '他在 ' + inc.site + ' 上反复请求 ' + pth + '，想找到可以利用的入口。';
+      inc.outcome = '收到。';
+      var fd = inc.first_seen;
+      inc.raw_example = atk.ip + ' - - [' + fd.slice(8, 10) + '/' + MON[parseInt(fd.slice(5, 7), 10) - 1] + '/' + fd.slice(0, 4) + ':' + fd.slice(11) + ' +0800] "GET ' + pth + ' HTTP/1.1" 404 0 "-" "' + pick(UAS) + '"';
+    });
+    for (var wi = 0; wi < warnN && wi < incidents.length; wi++) {
+      incidents[wi].verdict = '需留意';
+      if (!(warnOpen && wi === 0)) {
+        incidents[wi].resolved = true;
+        incidents[wi].resolution_note = pick(['攻击源已封禁，站点未受影响。', '对方只拿到了公开页面，无敏感内容泄露。']);
+      }
+    }
+    var wwhat, waction;
+    if (warnOpen) {
+      wwhat = '安全事件中有 1 起被判为需留意。';
+      waction = '立即处理：打开下方事件详情，逐条核对。';
+    } else if (wl === 'D') {
+      var clausesD = [];
+      if (heavyN > 15) clausesD.push(heavyN + ' 个 IP 达到自动封禁线');
+      if (warnN >= 7) clausesD.push(warnN + ' 起需留意事件已核实处理');
+      wwhat = clausesD.join('；') + '。';
+      waction = (warnN >= 7 && heavyN <= 15) ? '无需操作。需留意事件均已核实处理，但本时段数量偏多，留意即可。' : '立即处理：打开下方事件详情与攻击者排名，逐条核对。';
+    } else if (wl === 'C') {
+      var clausesC = [];
+      if (heavyN > 10) clausesC.push(heavyN + ' 个 IP 达到自动封禁线');
+      if (warnN >= 4) clausesC.push(warnN + ' 起需留意事件已核实处理');
+      wwhat = clausesC.join('；') + '。';
+      waction = (warnN >= 4 && heavyN <= 10) ? '无需操作。需留意事件均已核实处理，扫一眼即可。' : '无需操作。达到封禁线的 IP 已自动封禁，扫一眼即可。';
+    } else if (wl === 'B') {
+      var clausesB = [];
+      if (heavyN > 5) clausesB.push(heavyN + ' 个 IP 达到自动封禁线');
+      if (warnN >= 1) clausesB.push(warnN + ' 起需留意事件已核实处理');
+      wwhat = clausesB.join('；') + '。';
+      waction = '无需操作。扫一眼即可。';
+    } else if (incN > 0) {
+      wwhat = total + ' 次探测与攻击请求，' + incN + ' 起事件均未得手。';
+      waction = '无需任何操作。';
+    } else {
+      wwhat = total + ' 次探测与攻击请求，均被拦截（404/403）。';
+      waction = '无需任何操作。';
+    }
+    var hl = pick(LV);
+    var dCause = hl === 'D' ? ri(1, 3) : 0;
+    var hAnom = (dCause === 1 || dCause === 3) ? 1 : 0;
+    var hAK = null;
+    if (dCause === 2 || dCause === 3) { var akC = pick(['SRV', 'OPS', 'ADM', 'DEV']); hAK = ri(0, 1) ? { added: [{ who: akC, count: 1 }], removed: [] } : { added: [], removed: [{ who: akC, count: 1 }] }; }
+    var dWhat = dCause === 2 ? 'Linux 本时段授权密钥名单有变动，其余登录正常。' : dCause === 3 ? 'Linux 本时段出现 1 次异常登录，授权密钥名单也有变动。' : 'Linux 本时段出现 1 次异常登录，其余登录正常。';
+    var dAct = dCause === 2 ? '立即核对密钥名单的变动是谁做的。' : dCause === 3 ? '立即核查异常登录，并核对密钥名单的变动。' : '立即核查异常登录用到的密钥与来源。';
+    function hev(ip, loc, who, bulk, count, t1, t2) { return { ip: ip, user: 'hacker', loc: loc, method: 'key', ok: true, known: true, key_known: true, anomaly: false, who: who, note: null, bulk: bulk, count: count, first: fmd(t1), last: fmd(t2) }; }
+    var evs = [];
+    var CODES = ['SRV', 'OPS', 'ADM', 'DEV'];
+    var ni = ri(4, 6), ii2, net, t1, t2;
+    for (ii2 = 0; ii2 < ni; ii2++) { net = privNet(); t1 = randTime(); t2 = new Date(t1.getTime() + ri(600, 10800) * 1000); if (t2 > now) t2 = now; evs.push(hev(ipOf(net, ri(2, 254)), pick(LOCS), pick(CODES), null, ri(1, 9), t1, t2)); }
+    var SPECS = [];
+    SPECS.forEach(function (sp) {
+      var net2 = privNet(), loc = pick(LOCS), label = ipOf(net2, sp.b) + '/' + sp.s, nm = ri(2, 3), m, t1, t2, usedL = {}, last;
+      for (m = 0; m < nm; m++) { do { last = ri(sp.lo, sp.hi); } while (usedL[last]); usedL[last] = 1; t1 = randTime(); t2 = new Date(t1.getTime() + ri(600, 7200) * 1000); if (t2 > now) t2 = now; evs.push(hev(ipOf(net2, last), loc, 'OPS', label, ri(1, 4), t1, t2)); }
+    });
+    var nfailT = hl === 'A' ? 0 : hl === 'B' ? ri(1, 9) : ri(10, 40);
+    var fparts = nfailT === 0 ? [] : distribute(nfailT, ri(1, 3), 1);
+    var nfail = fparts.reduce(function (a, b) { return a + b; }, 0);
+    var ftop = fparts.map(function (c) { return { ip: pubIp(), count: c, loc: pick(LOCS), known: false }; });
+    if (hAnom) { var at1 = randTime(), at2 = new Date(at1.getTime() + ri(60, 600) * 1000); if (at2 > now) at2 = now; evs.push({ ip: pubIp(), user: 'hacker', loc: pick(LOCS), method: 'key', ok: true, known: false, key_known: false, anomaly: true, who: null, note: null, bulk: null, count: 1, first: fmd(at1), last: fmd(at2) }); }
+    var hwhat = hl === 'A' ? 'Linux 本时段风平浪静，登录全部正常。' : hl === 'B' ? 'Linux 本时段有 ' + nfail + ' 次失败登录，均未成功。' : hl === 'C' ? 'Linux 本时段失败登录 ' + nfail + ' 次，数量偏多。' : dWhat;
+    var haction = hl === 'A' ? '无需任何操作。' : hl === 'B' ? '无需操作，扫一眼即可。' : hl === 'C' ? '检查失败登录的来源地址，确认都是误报。' : dAct;
+    var host = { window: [fdtm(start), fdtm(now)], ssh_failed: nfail, ssh_anomaly: hAnom, authkeys_alert: hAK, ssh_failed_top: ftop, ssh_ok: evs.map(function (e) { return { ip: e.ip, count: e.count, known: e.known, loc: e.loc, bulk: e.bulk, who: e.who, key_known: e.key_known, anomaly: e.anomaly, note: null }; }), ssh_events: evs, panel: { ok: 0, ok_ips: [], failed: 0 }, fail2ban: { banned_now: 0, banned_window: 0 }, waf_blocked: 0, generated_at: fdt(now), anomaly_done: false };
+    var webGrade = { level: wl, what: wwhat, action: waction };
+    if (warnN > 0 && !warnOpen) { webGrade.done = true; webGrade.done_text = '已处理：' + warnN + ' 起需留意事件已核实处理。'; }
+    return { window_start: fdtm(start), window_end: fdtm(now), generated_at: fdt(now), total_attack_requests: total, via_cf_edges: ri(0, Math.max(1, Math.floor(total / 3))), distinct_attacker_ips: attackers.length, top_target_site: siteStats[0].site, site_stats: siteStats, breach: { suspected: true, count: incidents.reduce(function (a, x) { return a + x.count; }, 0), incidents: incidents }, attackers: attackers, hosts: { host1: host }, grades: { web: webGrade, host1: { level: hl, what: hwhat, action: haction } }, autobans: [] };
+  }
+
+  // 全零预览页（?key=0）：与演示页一样直接渲染，只是数据全为零，
+  // 用来看全零时的问号卡；不经过 key 取文件，也不跳转。
+  function genZero() {
+    function p2(n) { return String(n).padStart(2, '0'); }
+    function fdt(d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()); }
+    function fdtm(d) { return fdt(d).slice(0, 16); }
+    var raw = new Date();
+    var now = new Date(raw.getTime() + raw.getTimezoneOffset() * 60000 + 8 * 3600000);
+    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 0, 0);
+    if (now < start) start = new Date(start.getTime() - 86400000);
+    // 主机部分沿用演示的随机数据（站主 2026-11-23 定：key=0 时主机页继续随机显示）
+    var demo = genSample();
+    return { window_start: fdtm(start), window_end: fdtm(now), generated_at: fdt(now), total_attack_requests: 0, via_cf_edges: 0, distinct_attacker_ips: 0, top_target_site: null, site_stats: [], breach: { suspected: false, count: 0, incidents: [] }, attackers: [], hosts: demo.hosts, grades: { web: { level: 'A', zero: true, what: '本时段数据未知。', action: '安全看板运行出现问题，请联系管理员。' }, host1: demo.grades.host1, host2: { level: 'A', what: 'Host 2 本时段风平浪静，登录全部正常。', action: '无需任何操作。' } }, autobans: [] };
+  }
+
+  (async function () {
+    var key = new URLSearchParams(location.search).get('key');
+    // 打开页面时取一次，之后跟着后台半小时刷一次，不用手动刷页面。
+    // 重取失败（比如每天 07:00 换 key 后旧链接失效）就保留当前显示不动。
+    // 时间以服务器为准算 CST，不看客户端时间：取数响应头里的 Date 是 GMT，+8 小时就是 CST，
+    // 之后用客户端走过的时长接着推，客户端时区再怎么变都不影响。
+    var timeAnchor = null; // { serverCst: 取数那一刻的 CST 毫秒, client: 同一刻的 Date.now() }
+    function cstNow() {
+      if (timeAnchor) return timeAnchor.serverCst + (Date.now() - timeAnchor.client);
+      return Date.now() + 8 * 3600000; // 拿不到服务器时间才退回客户端时钟（只信它的走时，不信它的时区）
+    }
+    async function loadData() {
+      var res = await fetch('s-' + encodeURIComponent(key) + '.json?_=' + Date.now());
+      if (!res.ok) return false;
+      var dh = res.headers && res.headers.get ? res.headers.get('Date') : null;
+      var gmt = dh ? Date.parse(dh) : NaN;
+      if (!isNaN(gmt)) timeAnchor = { serverCst: gmt + 8 * 3600000, client: Date.now() };
+      var openIds = [];
+      document.querySelectorAll('#sec details[open]').forEach(function (d) { if (d.id) openIds.push(d.id); });
+      render(await res.json());
+      openIds.forEach(function (id) { var el = document.getElementById(id); if (el) el.open = true; });
+      return true;
+    }
+    try {
+      if (key === '0') {
+        window.__SAMPLE__ = true;
+        render(genZero());
+        return;
+      }
+      if (key) {
+        if (await loadData()) {
+          // 后台每半小时刷一次（整点/半点，CST），页面也跟着半小时刷一次，
+          // 对准整点/半点，晚 15 秒取，后台文件肯定写好了。
+          // 22:00 到次日 07:00 不刷，后台也不更新，直接等到 07:00。
+          (function scheduleNext() {
+            var nowMs = cstNow();
+            var now = new Date(nowMs);
+            var y = now.getUTCFullYear(), mo = now.getUTCMonth(), da = now.getUTCDate();
+            var h = now.getUTCHours(), mi = now.getUTCMinutes();
+            var nextMs;
+            if (mi < 30) { nextMs = Date.UTC(y, mo, da, h, 30, 0, 0); }
+            else { nextMs = Date.UTC(y, mo, da, h + 1, 0, 0, 0); }
+            var nh = new Date(nextMs).getUTCHours();
+            if (nh >= 22 || nh < 7) {
+              var nd = new Date(nextMs);
+              nextMs = Date.UTC(nd.getUTCFullYear(), nd.getUTCMonth(), nd.getUTCDate(), 7, 0, 0, 0);
+              if (nh >= 22) nextMs += 86400000;
+            }
+            setTimeout(function () { loadData().catch(function () {}); scheduleNext(); }, nextMs - nowMs + 15000);
+          })();
+          return;
+        }
+      }
+      window.__SAMPLE__ = true;
+      render(genSample());
+    } catch (e) {
+      /* 静默：不渲染任何安全内容 */
+    }
+  })();
+</script>
+</body>
+</html>

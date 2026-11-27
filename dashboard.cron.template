@@ -1,0 +1,12 @@
+# 安全看板定时任务模板（占位符说明见 deploy-guide.md）
+# 装法（二选一）：
+#   A. root 的 crontab：crontab -e，把下面两行粘进去（推荐）；
+#   B. /etc/cron.d/：cp dashboard.cron /etc/cron.d/dashboard，
+#      注意 /etc/cron.d/ 的文件每行命令前要加执行用户，例如 "root "。
+# 下面按 crontab（A）写法；用 B 时在每行命令前加 "root "。
+
+# 每 30 分钟只刷新看板数据（不换 key、不发邮件）
+*/30 * * * * __REFRESH_SCRIPT__ >> __BAN_WATCH_LOG__ 2>&1
+
+# 每天 07:00 全量：换 key、重新生成数据、发日报邮件
+0 7 * * * cd __SCRIPT_DIR__ && python3 dashboard-init.py >> __DAILY_LOG__ 2>&1
