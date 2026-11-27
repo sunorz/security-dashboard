@@ -1,7 +1,7 @@
 {
   "autoban_safe_nets": {
-    "cidrs": ["10.0.0.0/8", "172.16.0.0/12", "__LAN_NET__", "192.168.0.0/16", "__TAILSCALE_NET__", "169.254.0.0/16"],
-    "note": "Never-ban networks (LAN / Tailscale / ZeroTier / link-local)."
+    "cidrs": ["10.0.0.0/8", "172.16.0.0/12", "__LAN_NET__", "192.168.0.0/16", "__MESH_NET_1__", "169.254.0.0/16"],
+    "note": "Never-ban networks (LAN / mesh networks / link-local)."
   },
   "blog_exact_paths": {
     "note": "Exact paths excluded only for the blog site (compared after stripping the query).",
@@ -12,8 +12,8 @@
     "regex": "(?:^|/)cgi-bin(?:/|$)"
   },
   "exclude_ips": {
-    "ips": ["__HOME_IP__", "127.0.0.1", "::1"],
-    "note": "IPs not counted as attacks (your own IP and localhost)."
+    "ips": ["127.0.0.1", "::1"],
+    "note": "IPs not counted as attacks (localhost)."
   },
   "exclude_nets": {
     "cidrs": ["__EGRESS_NET_1__", "__EGRESS_NET_2__"],

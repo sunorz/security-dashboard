@@ -41,9 +41,9 @@
     --gc-t: rgba(207, 31, 20, 0.12); --gd-t: rgba(25, 25, 25, 0.08);
     --ga-ink: #1e7a3c; --gb-ink: #93700a; --gc-ink: #b01a10; --gd-ink: #26221d;
     --seg-bg: rgba(255, 255, 255, 0.65);
-    --tag-sun-bg: #eee42b; --tag-sun-ink: #000000;
-    --tag-yan-bg: #6b74f3; --tag-yan-ink: #ffffff;
-    --tag-pep-bg: #da2bee; --tag-pep-ink: #ffffff;
+    --tag-own-bg: #eee42b; --tag-own-ink: #000000;
+    --tag-aga-bg: #6b74f3; --tag-aga-ink: #ffffff;
+    --tag-agb-bg: #da2bee; --tag-agb-ink: #ffffff;
     --tag-bak-bg: #2be7ee; --tag-bak-ink: #000000;
     --tag-lan-bg: #2bee45; --tag-lan-ink: #000000;
     --tag-fff-bg: #ef4538; --tag-fff-ink: #ffffff;
@@ -86,9 +86,9 @@
       --gc-t: rgba(217, 43, 31, 0.20); --gd-t: rgba(201, 194, 180, 0.08);
       --ga-ink: #34a853; --gb-ink: #f2c018; --gc-ink: #e8705f; --gd-ink: #c9c2b4;
       --seg-bg: rgba(255, 255, 255, 0.07);
-      --tag-sun-bg: #6f6a09; --tag-sun-ink: #ffffff;
-      --tag-yan-bg: #0b148e; --tag-yan-ink: #ffffff;
-      --tag-pep-bg: #810b8e; --tag-pep-ink: #ffffff;
+      --tag-own-bg: #6f6a09; --tag-own-ink: #ffffff;
+      --tag-aga-bg: #0b148e; --tag-aga-ink: #ffffff;
+      --tag-agb-bg: #810b8e; --tag-agb-ink: #ffffff;
       --tag-bak-bg: #0a7275; --tag-bak-ink: #ffffff;
       --tag-lan-bg: #0a7718; --tag-lan-ink: #ffffff;
       --tag-fff-bg: #8e140b; --tag-fff-ink: #ffffff;
@@ -527,9 +527,9 @@
     --tag-ink: var(--text);
     color: var(--tag-ink);
   }
-  .who.c-sun { --tag-bg: var(--tag-sun-bg); --tag-ink: var(--tag-sun-ink); }
-  .who.c-yan { --tag-bg: var(--tag-yan-bg); --tag-ink: var(--tag-yan-ink); }
-  .who.c-pep { --tag-bg: var(--tag-pep-bg); --tag-ink: var(--tag-pep-ink); }
+  .who.c-own { --tag-bg: var(--tag-own-bg); --tag-ink: var(--tag-own-ink); }
+  .who.c-aga { --tag-bg: var(--tag-aga-bg); --tag-ink: var(--tag-aga-ink); }
+  .who.c-agb { --tag-bg: var(--tag-agb-bg); --tag-ink: var(--tag-agb-ink); }
   .who.c-bak { --tag-bg: var(--tag-bak-bg); --tag-ink: var(--tag-bak-ink); }
   .who.c-lan { --tag-bg: var(--tag-lan-bg); --tag-ink: var(--tag-lan-ink); }
   .who svg { display: block; }
@@ -812,7 +812,7 @@
   <main class="wrap">
     <header class="phead"><span class="pdisc"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 2.8v5.4c0 4.4-2.9 7.6-7 9.3-4.1-1.7-7-4.9-7-9.3V5.8L12 3z"/></svg></span><div class="ptxt"><h1>安全日志</h1><p class="sub" id="win"></p></div></header>
     <section id="sec"></section>
-    <footer class="page-footer">© 2026 Sunplace</footer>
+    <footer class="page-footer">© 2026 __OWNER_NAME__</footer>
   </main>
 
 <script>
@@ -1049,10 +1049,10 @@
     return '<img class="flag" src="https://flagcdn.com/w80/' + a2 + '.png" srcset="https://flagcdn.com/w160/' + a2 + '.png 2x" alt="' + iso + '" title="' + esc(cn) + '" loading="lazy">';
   }
   var APP_ICON_PATHS = {
-    Tailscale: 'M24 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm-9 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm0-9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6-6a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 24a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm18 .5a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm9-9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm-3 2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 3a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM3 5.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
-    ZeroTier: 'M4.01 0A3.999 3.999 0 0 0 .014 4v16c0 2.209 1.79 4 3.996 4h15.98a3.998 3.998 0 0 0 3.996-4V4c0-2.209-1.79-4-3.996-4zm-.672 2.834h17.326a.568.568 0 1 1 0 1.137h-8.129c.021.059.033.123.033.19v1.804A6.06 6.06 0 0 1 18.057 12c0 3.157-2.41 5.75-5.489 6.037v2.56a.568.568 0 1 1-1.136 0v-2.56A6.061 6.061 0 0 1 5.943 12a6.06 6.06 0 0 1 5.489-6.035V4.16c0-.066.012-.13.033-.19H3.338a.568.568 0 1 1 0-1.136zm8.094 4.307A4.89 4.89 0 0 0 7.113 12a4.89 4.89 0 0 0 4.319 4.86zm1.136 0v9.718A4.892 4.892 0 0 0 16.888 12a4.892 4.892 0 0 0-4.32-4.86z'
+    'Mesh 1': 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M15 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M9 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
+    'Mesh 2': 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M15 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M9 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0'
   };
-  var APP_ICON_COLORS = { Tailscale: '#242424', ZeroTier: '#FFB441' };
+  var APP_ICON_COLORS = { 'Mesh 1': '#5B7BA5', 'Mesh 2': '#5B7BA5' };
   function appIcon(app) {
     var p = APP_ICON_PATHS[app];
     if (!p) return '';
@@ -1201,7 +1201,7 @@
     if (j.breach && j.breach.suspected && incidents.length) {
       html += '<h2 class="t2">' + tdisc('alert') + '安全事件</h2>';
       html += '<div class="incidents">';
-      // 待解决的需留意置顶（站主 2026-11-24 定）：未核销需留意排最前，
+      // 待解决的需留意置顶（所有者 2026-11-24 定）：未核销需留意排最前，
       // 其余（含已核销）保持原顺序——核销后自动回到原位置。
       var ordered = incidents.filter(function (x) { return x.verdict === '需留意' && !x.resolved; })
         .concat(incidents.filter(function (x) { return !(x.verdict === '需留意' && !x.resolved); }));
@@ -1335,7 +1335,7 @@
     var WHO_TAG_R = 'M 34.6 3.2 L 48.4 3.2 A 3.2 3.2 0 0 1 51.6 6.4 L 51.6 17.2 A 3.2 3.2 0 0 1 48.4 20.4 L 35.9 20.4 L 33.9 17.8 L 37.4 14.3 L 33.9 10.8 L 36.9 7.3 Z';
     var WHO_CRACK_L = 'M 31.5 2.4 L 34.4 6.8 L 31.2 10.2 L 34.2 13.8 L 31.4 17.2 L 32.8 19.6';
     var WHO_CRACK_R = 'M 34.6 3.2 L 36.9 7.3 L 33.9 10.8 L 37.4 14.3 L 33.9 17.8 L 35.9 20.4';
-    var WHO_CLS = { 'SPL': ' c-sun', 'YNG': ' c-yan', 'PEP': ' c-pep',
+    var WHO_CLS = { 'OWN': ' c-own', 'AGA': ' c-aga', 'AGB': ' c-agb',
       'BAK': ' c-bak', 'LAN': ' c-lan' };
     function whoChip(w) {
       if (!w) return '';
@@ -1750,7 +1750,7 @@
             if (k < 1) { gradeEl._glide = requestAnimationFrame(step); }
             else {
               gradeEl._glide = null;
-              // 松手时已滑回真实等级：鱼和字都不动，不闪（站主 2026-11-23 定）
+              // 松手时已滑回真实等级：鱼和字都不动，不闪（所有者 2026-11-23 定）
               if (gradeEl._shown !== real) {
                 gradeEl.classList.add('gfade');
                 gradeEl._fadeT = setTimeout(function () {
@@ -1799,7 +1799,7 @@
     var ALL = ['example.com', 'blog.example.com', 'shop.example.com', 'api.example.com', 'docs.example.com', 'support.example.com'];
     var sites = ALL.slice();
     for (var i = sites.length - 1; i > 0; i--) { var k = Math.floor(Math.random() * (i + 1)); var tmp = sites[i]; sites[i] = sites[k]; sites[k] = tmp; }
-    // 演示等级与现行口径一一对应（站主 2026-11-24 改定）：网站只有两个
+    // 演示等级与现行口径一一对应（所有者 2026-11-24 改定）：网站只有两个
     // 判定——封禁线（未封禁重度 IP 数 >5 B、>10 C、>15 D）与事件处理
     // （需留意总数 1-3 B、4-6 C、7+ D；未核销需留意有即 D）。先按这两
     // 个判定抽数，再生成攻击者与事件；事件总数不参与评级，可任意。
@@ -1967,7 +1967,7 @@
     var now = new Date(raw.getTime() + raw.getTimezoneOffset() * 60000 + 8 * 3600000);
     var start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 0, 0);
     if (now < start) start = new Date(start.getTime() - 86400000);
-    // 主机部分沿用演示的随机数据（站主 2026-11-23 定：key=0 时主机页继续随机显示）
+    // 主机部分沿用演示的随机数据（所有者 2026-11-23 定：key=0 时主机页继续随机显示）
     var demo = genSample();
     return { window_start: fdtm(start), window_end: fdtm(now), generated_at: fdt(now), total_attack_requests: 0, via_cf_edges: 0, distinct_attacker_ips: 0, top_target_site: null, site_stats: [], breach: { suspected: false, count: 0, incidents: [] }, attackers: [], hosts: demo.hosts, grades: { web: { level: 'A', zero: true, what: '本时段数据未知。', action: '安全看板运行出现问题，请联系管理员。' }, host1: demo.grades.host1, host2: { level: 'A', what: 'Host 2 本时段风平浪静，登录全部正常。', action: '无需任何操作。' } }, autobans: [] };
   }

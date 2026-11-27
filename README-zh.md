@@ -84,17 +84,16 @@ fail2ban 日志（可选）───────────────┘     
 | `__SMTP_SENDER__` | 发件邮箱 | 必填 | 新主机发日报邮件用的邮箱（SMTP 账号） |
 | `__SMTP_RECEIVER__` | 收件邮箱 | 必填 | 接收日报邮件的邮箱 |
 | `__SMTP_PASSWORD__` | 发件邮箱密码 | 必填 | 发件邮箱的密码，不要外泄 |
-| `__HOME_IP__` | 站主本人 IP | 可选 | 站主常用的公网 IP（单个地址），主机栏“已知来源”用。没有固定 IP 就留着 |
-| `__HOME_NET__` | 站主家庭网段 | 可选 | 站主家庭宽带网段（CIDR），面板登录“已知来源”用。这是 `__HOME_IP__` 的 /24；没有固定家庭 IP 时两个都留着 |
+| `__OWNER_NAME__` | 所有者名字 | 必填 | 你的名字；看板页脚 © 署名用它，生成器也用它认出你自己的 SSH 钥匙（钥匙注释里带这个词的归到所有者）。 |
 | `__HOST_PUBLIC_IP__` | 本机公网 IP | 必填 | 本机自己的公网 IP（单个地址）；面板/SSH 有时会记下本机自己从公网 IP 登录，那不是陌生人 |
 | `__EGRESS_NET_1__` | 助手出口网段 1 | 可选 | 助手工具出口的网段（CIDR）；有多个按顺序填，`__EGRESS_NET_2__` 同理。没有助手工具连这台主机时两个都留着 |
 | `__EGRESS_NET_2__` | 助手出口网段 2 | 可选 | 同上 |
-| `__LAN_NET__` | 站主局域网段 | 可选 | 站主局域网网段（CIDR），永不封禁的安全底线。这台主机没有局域网时留着 |
-| `__LAN_PREFIX__` | 局域网 IP 前缀 | 可选 | 站主局域网的 IP 前缀（如 `172.32.`），生成器用它识别内网 IP、不做归属地查询。这台主机没有局域网时留着 |
-| `__TAILSCALE_NET__` | Tailscale 组网网段 | 可选 | Tailscale 的网段（CIDR）。不用 Tailscale 时留着 |
-| `__ZEROTIER_NET__` | ZeroTier 组网网段 | 可选 | 组网（ZeroTier）的网段（CIDR）。不用组网时留着 |
-| `__YANG_TAILSCALE_IP__` | Yang 的 Tailscale IP | 可选 | Yang 节点的 Tailscale IP；把它发来的 SSH 登录归到 "yang" 密钥标记。没有这个节点时留着 |
-| `__PEPPER_TAILSCALE_IP__` | Pepper 的 Tailscale IP | 可选 | Pepper 节点的 Tailscale IP；把它发来的 SSH 登录归到 "pepper" 密钥标记。没有这个节点时留着 |
+| `__LAN_NET__` | 局域网网段 | 可选 | 你的局域网网段（CIDR），永不封禁的安全底线。这台主机没有局域网时留着 |
+| `__LAN_PREFIX__` | 局域网 IP 前缀 | 可选 | 你的局域网 IP 前缀（如 `10.20.`），生成器用它识别内网 IP、不做归属地查询。这台主机没有局域网时留着 |
+| `__MESH_NET_1__` | 组网 1 的网段 | 可选 | 组网 1 的网段（CIDR）。不用组网时留着 |
+| `__MESH_NET_2__` | 组网 2 的网段 | 可选 | 组网 2 的网段（CIDR）。不用组网时留着 |
+| `__AGENT_A_MESH_IP__` | 助手 A 的组网 IP | 可选 | 助手 A 节点的组网 IP；把它发来的 SSH 登录归到 "agent_a" 密钥标记。没有这个节点时留着 |
+| `__AGENT_B_MESH_IP__` | 助手 B 的组网 IP | 可选 | 助手 B 节点的组网 IP；把它发来的 SSH 登录归到 "agent_b" 密钥标记。没有这个节点时留着 |
 
 #### 其他机器主机安全推送脚本
 
@@ -106,13 +105,12 @@ fail2ban 日志（可选）───────────────┘     
 | `__SSH_PORT__` | SSH 端口 | 必填 | 看板主机（host 1）的 SSH 端口 |
 | `__HOST2_PUSH_DEST__` | 推送目的地 | 必填 | host 2 推送数据的位置：`user@host1主机:文件名`（scp 到 host 1 的接收账号家目录） |
 | `__PUSH_USER__` | host 1 上接收账号的用户名 | 可选 | 同上；只监控一台主机时留着 |
-| `__HOME_NET__` | 站主家庭网段 | 可选 | 同上；没有固定家庭 IP 时留着 |
-| `__LAN_NET__` | 站主局域网段 | 可选 | 同上；host 2 没有局域网时留着 |
+| `__LAN_NET__` | 局域网网段 | 可选 | 同上；host 2 没有局域网时留着 |
 | `__LAN_PREFIX__` | 局域网 IP 前缀 | 可选 | 同上 |
-| `__TAILSCALE_NET__` | Tailscale 组网网段 | 可选 | 不用 Tailscale 时留着 |
-| `__ZEROTIER_NET__` | ZeroTier 组网网段 | 可选 | 不用组网时留着 |
-| `__YANG_TAILSCALE_IP__` | Yang 的 Tailscale IP | 可选 | 没有这个节点时留着 |
-| `__PEPPER_TAILSCALE_IP__` | Pepper 的 Tailscale IP | 可选 | 没有这个节点时留着 |
+| `__MESH_NET_1__` | 组网 1 的网段 | 可选 | 不用组网时留着 |
+| `__MESH_NET_2__` | 组网 2 的网段 | 可选 | 不用组网时留着 |
+| `__AGENT_A_MESH_IP__` | 助手 A 的组网 IP | 可选 | 没有这个节点时留着 |
+| `__AGENT_B_MESH_IP__` | 助手 B 的组网 IP | 可选 | 没有这个节点时留着 |
 
 #### 负责定时轮换看板数据的脚本
 
@@ -151,11 +149,10 @@ fail2ban 日志（可选）───────────────┘     
 
 | 占位符 | 是什么 | 必填？ | 新主机填什么 |
 |---|---|---|---|
-| `__LAN_NET__` | 站主局域网段 | 可选 | 同上 |
-| `__HOME_IP__` | 站主本人 IP | 可选 | 同上；没有固定 IP 就留着 |
+| `__LAN_NET__` | 局域网网段 | 可选 | 同上 |
 | `__EGRESS_NET_1__` | 助手出口网段 1 | 可选 | 同上 |
 | `__EGRESS_NET_2__` | 助手出口网段 2 | 可选 | 同上 |
-| `__TAILSCALE_NET__` | Tailscale 组网网段 | 可选 | 不用 Tailscale 时留着 |
+| `__MESH_NET_1__` | 组网 1 的网段 | 可选 | 不用组网时留着 |
 
 ### index.html.template
 
@@ -204,7 +201,7 @@ fail2ban 日志（可选）───────────────┘     
    - `dashboard.cron.template` 的两行 → root 的 crontab（`crontab -e`）
    - `nginx-dashboard.conf.template` 的两段 → `nginx.conf` 的 http 段 和站点配置
 3. 从本目录拷看板页模板 `index.html.template`，按第 3 节末尾改好站点和主机名， 去掉 `.template` 后缀放到 `__DASHBOARD_DIR__` 当 `index.html`；再从本目录 `assets/` 拷 6 张图片（`fish-sprite.webp`、`fish-zero.webp`、`ie-redx.png`、 `medal-gold.png`、`medal-silver.png`、`medal-bronze.png`）到同一目录。 `s-<key>.json` 不用拷，新主机会自己生成。
-4. 配规则文件。从本目录拷 `.dashboard-rules.json.template`，填好里面的 占位符（`__LAN_NET__`、`__HOME_IP__`、`__EGRESS_NET_1__`、 `__EGRESS_NET_2__`、`__TAILSCALE_NET__`），去掉 `.template` 后缀放到 `__RULES_PATH__` 当 `.dashboard-rules.json`。注意：如果这个文件没配好或坏了， 生成器会写未知看板（这是 2026-11-26 定下的无兜底规则），但封禁不停。 所以先确认规则文件就位再验证。
+4. 配规则文件。从本目录拷 `.dashboard-rules.json.template`，填好里面的 占位符（`__LAN_NET__`、`__EGRESS_NET_1__`、 `__EGRESS_NET_2__`、`__MESH_NET_1__`），去掉 `.template` 后缀放到 `__RULES_PATH__` 当 `.dashboard-rules.json`。注意：如果这个文件没配好或坏了， 生成器会写未知看板（这是 2026-11-26 定下的无兜底规则），但封禁不停。 所以先确认规则文件就位再验证。
 5. 状态文件：不用拷，生成器会重建（见第 8 节）。
 6. nginx 里 include 封禁名单（模板第 1 段），`nginx -t` 通过后 reload。
 7. 手动跑一次全量验证：`cd __SCRIPT_DIR__ && python3 dashboard-init.py`， 确认 `__DASHBOARD_DIR__` 里生成了新的 `s-<key>.json`，用新 key 的 链接打开看板有数据，并且收到日报邮件。

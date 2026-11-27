@@ -36,7 +36,7 @@ def _net(s):
 _HOST_STATE_FILE = "/root/.hostsec-state.json"
 # 面板登录的已知来源：本机局域网与组网。
 _PANEL_KNOWN_NETS = [_net("__LAN_NET__"),
-                     _net("__TAILSCALE_NET__")]
+                     _net("__MESH_NET_1__")]
 _HOST_PANEL_DB = "/www/server/panel/data/db/log.db"
 _HOST_SSH_FAIL_RE = re.compile(
     r"Failed (?:password|publickey|none|keyboard-interactive/pam)"
@@ -73,16 +73,16 @@ _HOST_MONTH_NUM = {
     "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
 }
 # 已知 SSH 来源：组网内两台设备、本机、局域网网段。
-_HOST_KNOWN_IPS = {"__PEPPER_TAILSCALE_IP__", "__YANG_TAILSCALE_IP__", "127.0.0.1", "::1"}
+_HOST_KNOWN_IPS = {"__AGENT_B_MESH_IP__", "__AGENT_A_MESH_IP__", "127.0.0.1", "::1"}
 _HOST_KNOWN_NETS = [_net("__LAN_NET__")]
-_HOST_TAILNET_NET = _net("__TAILSCALE_NET__")
-_HOST_ZT_NETS = [_net("__ZEROTIER_NET__")]  # ZeroTier 网段，显示同组网（站主 2026-11-24 定）
+_HOST_MESH1_NET = _net("__MESH_NET_1__")
+_HOST_MESH2_NETS = [_net("__MESH_NET_2__")]  # 组网 2 的网段，显示同组网（所有者 2026-11-24 定）
 _HOST_PRIVATE_NETS = [ipaddress.ip_network("10.0.0.0/8"),
                       ipaddress.ip_network("172.16.0.0/12"),
                       ipaddress.ip_network("192.168.0.0/16")]
-# 已知批量来源网段：组网 __TAILSCALE_NET__ 算 Agent 直连（站主 2026-11-24 定：
+# 已知批量来源网段：组网 __MESH_NET_1__ 算 Agent 直连（所有者 2026-11-24 定：
 # 那是助手直连 host 2 的记录）。看板折叠逻辑与 host 1 共用。
-_HOST_BULK_NETS = [_net("__TAILSCALE_NET__")]
+_HOST_BULK_NETS = [_net("__MESH_NET_1__")]
 _HOST_SCP_OPTS = ["-i", "__PUSH_SSH_KEY__", "-P", "__SSH_PORT__",
                   "-o", "BatchMode=yes"]
 _HOST_DEST = "__HOST2_PUSH_DEST__"
@@ -225,7 +225,7 @@ def _migrate_old_baseline(old_ips, rows):
 
 
 def _flag_new_ip_logins(ok_list, ssh_events):
-    """陌生归属地标记（站主 2026-11-24 改定，取代按 IP 判定）：
+    """陌生归属地标记（所有者 2026-11-24 改定，取代按 IP 判定）：
     非助手出口（bulk 为空）的密钥成功登录，按归属地 loc（国家 ·
     城市整串）判定——已知归属地换 IP 不报；第一次出现的归属地标
     stranger、note=「陌生归属地」，并记入 pending 持久保存，之后
@@ -247,7 +247,7 @@ def _flag_new_ip_logins(ok_list, ssh_events):
             continue
         loc = e.get("loc") or ""
         if not loc:
-            # 归属地为空分两种（站主 2026-11-24 定）：只是未知
+            # 归属地为空分两种（所有者 2026-11-24 定）：只是未知
             # （查过但无结果）→ 什么都不显示；查询真失败
             # （geo_failed）→ 前台留一行「归属地查询失败」。
             # 两种都不当作地理变化、不进基线。
@@ -289,7 +289,7 @@ def _flag_new_ip_logins(ok_list, ssh_events):
 
 def _confirm_location(loc):
     """维护者确认某归属地为常驻/长期使用：取消其陌生标记、转入
-    已知归属地，并把这次确认记入 usually-key.json（站主
+    已知归属地，并把这次确认记入 usually-key.json（所有者
     2026-11-24 定：key 的陌生标记被取消时生成 usually-key.json）。
     用法：push-host-data.py --confirm-location "国家 · 城市"。"""
     state, _fr, _old = _load_loc_state()
@@ -353,7 +353,7 @@ def _authkeys_change(auth_fps, letters=None):
         prev = None
     # 旧状态里存的是单字母标记，统一翻译成三字母代码再用（仅显示
     # 标签受影响；增删判定只比对指纹集合，不受改名影响）。
-    _LEGACY_WHO = {"S": "SPL", "Y": "YNG", "P": "PEP",
+    _LEGACY_WHO = {"S": "OWN", "Y": "AGA", "P": "AGB",
                    "B": "BAK", "L": "LAN"}
     if prev_letters:
         prev_letters = {
@@ -533,26 +533,23 @@ def _authorized_key_info():
     return result
 
 
-_KEY_HOME_NET = _net("__HOME_NET__")
 _KEY_LAN_NET = _net("__LAN_NET__")
 
 
 def _key_src_class(ip):
     """SSH 来源的通道类别（只用于把钥匙归到使用者的字母标记）。"""
-    if ip == "__YANG_TAILSCALE_IP__":
-        return "yang"
-    if ip == "__PEPPER_TAILSCALE_IP__":
-        return "pepper"
+    if ip == "__AGENT_A_MESH_IP__":
+        return "agent_a"
+    if ip == "__AGENT_B_MESH_IP__":
+        return "agent_b"
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return "other"
     if any(addr in n for n in _HOST_BULK_NETS):
-        return "yang"
+        return "agent_a"
     if addr in _KEY_LAN_NET:
         return "lan"
-    if addr in _KEY_HOME_NET:
-        return "home"
     if addr.is_loopback:
         return "local"
     return "other"
@@ -561,7 +558,7 @@ def _key_src_class(ip):
 def _resolve_key_letters(key_info, events):
     """把每把授权钥匙归到一个三字母代码：{(user, fp): code}。
 
-    YNG=Yang、SPL=站主、BAK=备份拉取、PEP=Pepper、LAN=局域网电脑；有授权但
+    AGA=助手 A、OWN=所有者、BAK=备份拉取、AGB=助手 B、LAN=局域网电脑；有授权但
     归不到任何通道的标 ⚠。依据是钥匙注释与本时段的实际使用来源
     （通道），与登录次数无关；已知/异常判定不走这里，仍只认指纹。"""
     classes = {}
@@ -575,20 +572,18 @@ def _resolve_key_letters(key_info, events):
             seen = classes.get((user, fp), set())
             if user == "__PUSH_USER__" or "pull" in c or "backup" in c:
                 letter = "BAK"
-            elif "pepper" in c:
-                letter = "PEP"
-            elif "sunplace" in c:
-                letter = "SPL"
-            elif "yang" in c:
-                letter = "YNG"
-            elif "yang" in seen:
-                letter = "YNG"
-            elif "pepper" in seen:
-                letter = "PEP"
+            elif "agent_b" in c:
+                letter = "AGB"
+            elif "__OWNER_NAME__".lower() in c:
+                letter = "OWN"
+            elif "agent_a" in c:
+                letter = "AGA"
+            elif "agent_a" in seen:
+                letter = "AGA"
+            elif "agent_b" in seen:
+                letter = "AGB"
             elif "lan" in seen:
                 letter = "LAN"
-            elif "home" in seen:
-                letter = "SPL"
             else:
                 letter = "⚠"
             letters[(user, fp)] = letter
@@ -765,7 +760,7 @@ def _host_ssh_lists(failed_ips, ok_ips, known, events, auth_fps,
         if _f not in fp_letters or fp_letters[_f] == "⚠":
             fp_letters[_f] = _l
     """把 SSH 来源整理成看板条目（公网 IP 只查一次归属地）：
-    局域网（RFC1918、本机已知局域网段等）按 /24 合并、loc=局域网；组网（__TAILSCALE_NET__、ZeroTier __ZEROTIER_NET__）
+    局域网（RFC1918、本机已知局域网段等）按 /24 合并、loc=局域网；组网（__MESH_NET_1__、__MESH_NET_2__）
     逐个保留、loc=组网；环回 loc=本机；公网逐个保留、loc=归属地。
     登录明细（events）按合并后的 IP 标签重新分组。
     成功登录的「已知」只认密钥指纹（auth_fps）：指纹不在该账号授权集合内、
@@ -786,11 +781,11 @@ def _host_ssh_lists(failed_ips, ok_ips, known, events, auth_fps,
         if isinstance(addr, ipaddress.IPv6Address):
             r = ((ip, "本机", known(ip)) if addr.is_loopback
                  else (ip, None, known(ip)))
-        elif (addr in _HOST_TAILNET_NET
-                or any(addr in n for n in _HOST_ZT_NETS)):
+        elif (addr in _HOST_MESH1_NET
+                or any(addr in n for n in _HOST_MESH2_NETS)):
             r = (ip, "组网", known(ip))
-            resolved_app[ip] = ("Tailscale" if addr in _HOST_TAILNET_NET
-                                else "ZeroTier")
+            resolved_app[ip] = ("Mesh 1" if addr in _HOST_MESH1_NET
+                                else "Mesh 2")
         elif addr.is_loopback:
             r = (ip, "本机", known(ip))
         elif (any(addr in n for n in _HOST_PRIVATE_NETS)
@@ -945,7 +940,7 @@ def _host_ssh_lists(failed_ips, ok_ips, known, events, auth_fps,
     event_rows = sorted(egroups.values(), key=lambda e: -e["count"])
     for e in ok_entries:
         e.pop("fp", None)
-    # 对外发出的行不带指纹；用户名成功行也带（站主 2026-11-24 令看板
+    # 对外发出的行不带指纹；用户名成功行也带（所有者 2026-11-24 令看板
     # 显示登录用户名；此前以「用户名是半个凭据」为由只给失败行，已废止）。
     # 成功行去掉 fp 后按其余字段（含 user）合并：计数求和、时间取首尾。
     merged = {}

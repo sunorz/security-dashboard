@@ -84,17 +84,16 @@ Use this table when filling in the templates. Placeholders are grouped by the fi
 | `__SMTP_SENDER__` | Sender mailbox | Required | Mailbox used to send the daily report email (SMTP account) |
 | `__SMTP_RECEIVER__` | Receiver mailbox | Required | Mailbox that receives the daily report email |
 | `__SMTP_PASSWORD__` | Sender mailbox password | Required | Password of the sender mailbox; do not leak it |
-| `__HOME_IP__` | Owner's own IP | Optional | Owner's usual public IP (a single address), used as a "known source" in the host panel. Leave it if you have no fixed IP |
-| `__HOME_NET__` | Owner's home network | Optional | Owner's home broadband network (CIDR), used as a "known source" for panel logins. This is the /24 of `__HOME_IP__`; if you have no fixed home IP, leave both |
+| `__OWNER_NAME__` | Owner name | Required | Your name; used in the dashboard footer © line, and the generator uses it to recognise your own SSH keys (a key whose comment contains this word maps to the owner). |
 | `__HOST_PUBLIC_IP__` | Host's own public IP | Required | The host's own public IP (a single address); the panel/SSH sometimes log a login from the host itself via its public IP, that is not a stranger |
 | `__EGRESS_NET_1__` | Assistant egress network 1 | Optional | Network (CIDR) the assistant tools connect from; if there are several, fill them in order, `__EGRESS_NET_2__` the same way. Leave both if no assistant tools connect to this host |
 | `__EGRESS_NET_2__` | Assistant egress network 2 | Optional | Same as above |
-| `__LAN_NET__` | Owner's LAN network | Optional | Owner's LAN network (CIDR), the never-ban safety floor. Leave it if this host has no LAN |
-| `__LAN_PREFIX__` | LAN IP prefix | Optional | Owner's LAN IP prefix (e.g. `172.32.`); the generator uses it to recognise LAN IPs and skip geolocation. Leave it if this host has no LAN |
-| `__TAILSCALE_NET__` | Tailscale network | Optional | Tailscale network (CIDR). Leave it if you do not use Tailscale |
-| `__ZEROTIER_NET__` | ZeroTier network | Optional | ZeroTier network (CIDR). Leave it if you do not use ZeroTier |
-| `__YANG_TAILSCALE_IP__` | Yang's Tailscale IP | Optional | Tailscale IP of the Yang node; maps SSH logins from it to the "yang" key label. Leave it if there is no such node |
-| `__PEPPER_TAILSCALE_IP__` | Pepper's Tailscale IP | Optional | Tailscale IP of the Pepper node; maps SSH logins from it to the "pepper" key label. Leave it if there is no such node |
+| `__LAN_NET__` | Your LAN network | Optional | Your LAN network (CIDR), the never-ban safety floor. Leave it if this host has no LAN |
+| `__LAN_PREFIX__` | LAN IP prefix | Optional | Your LAN IP prefix (e.g. `10.20.`); the generator uses it to recognise LAN IPs and skip geolocation. Leave it if this host has no LAN |
+| `__MESH_NET_1__` | Mesh network 1 | Optional | Mesh network 1 (CIDR). Leave it if you do not use mesh networking |
+| `__MESH_NET_2__` | Mesh network 2 | Optional | Mesh network 2 (CIDR). Leave it if you do not use mesh networking |
+| `__AGENT_A_MESH_IP__` | Agent A's mesh IP | Optional | Mesh IP of the Agent A node; maps SSH logins from it to the "agent_a" key label. Leave it if there is no such node |
+| `__AGENT_B_MESH_IP__` | Agent B's mesh IP | Optional | Mesh IP of the Agent B node; maps SSH logins from it to the "agent_b" key label. Leave it if there is no such node |
 
 #### Host-security push script for other machines
 
@@ -106,13 +105,12 @@ Use this table when filling in the templates. Placeholders are grouped by the fi
 | `__SSH_PORT__` | SSH port | Required | SSH port of the dashboard host (host 1) |
 | `__HOST2_PUSH_DEST__` | Push destination | Required | Where host 2 pushes its data: `user@host1-host:filename` (scp destination on host 1, in the receiving account's home directory) |
 | `__PUSH_USER__` | Receiving account username on host 1 | Optional | Same as in the generator above; leave it if you monitor only one host |
-| `__HOME_NET__` | Owner's home network | Optional | Same as in the generator above; leave it if you have no fixed home IP |
-| `__LAN_NET__` | Owner's LAN network | Optional | Same as in the generator above; leave it if host 2 has no LAN |
+| `__LAN_NET__` | Your LAN network | Optional | Same as in the generator above; leave it if host 2 has no LAN |
 | `__LAN_PREFIX__` | LAN IP prefix | Optional | Same as in the generator above |
-| `__TAILSCALE_NET__` | Tailscale network | Optional | Leave it if you do not use Tailscale |
-| `__ZEROTIER_NET__` | ZeroTier network | Optional | Leave it if you do not use ZeroTier |
-| `__YANG_TAILSCALE_IP__` | Yang's Tailscale IP | Optional | Leave it if there is no such node |
-| `__PEPPER_TAILSCALE_IP__` | Pepper's Tailscale IP | Optional | Leave it if there is no such node |
+| `__MESH_NET_1__` | Mesh network 1 | Optional | Leave it if you do not use mesh networking |
+| `__MESH_NET_2__` | Mesh network 2 | Optional | Leave it if you do not use mesh networking |
+| `__AGENT_A_MESH_IP__` | Agent A's mesh IP | Optional | Leave it if there is no such node |
+| `__AGENT_B_MESH_IP__` | Agent B's mesh IP | Optional | Leave it if there is no such node |
 
 #### Scheduled dashboard-data refresh script
 
@@ -151,11 +149,10 @@ Use this table when filling in the templates. Placeholders are grouped by the fi
 
 | Placeholder | What it is | Required? | What to fill in |
 |---|---|---|---|
-| `__LAN_NET__` | Owner's LAN network | Optional | Same as in the generator above |
-| `__HOME_IP__` | Owner's own IP | Optional | Same as in the generator above; leave it if you have no fixed IP |
+| `__LAN_NET__` | Your LAN network | Optional | Same as in the generator above |
 | `__EGRESS_NET_1__` | Assistant egress network 1 | Optional | Same as in the generator above |
 | `__EGRESS_NET_2__` | Assistant egress network 2 | Optional | Same as above |
-| `__TAILSCALE_NET__` | Tailscale network | Optional | Leave it if you do not use Tailscale |
+| `__MESH_NET_1__` | Mesh network 1 | Optional | Leave it if you do not use mesh networking |
 
 ### index.html.template
 
@@ -204,7 +201,7 @@ Follow these steps top to bottom on a fresh host.
    - The two lines in `dashboard.cron.template` → root's crontab (`crontab -e`)
    - The two blocks in `nginx-dashboard.conf.template` → the http block of `nginx.conf` and the site configuration
 3. Copy the dashboard page template `index.html.template` from this directory, change the sites and host names as described at the end of Section 3, drop the `.template` suffix and place it in `__DASHBOARD_DIR__` as `index.html`; then copy the 6 images from this directory's `assets/` (`fish-sprite.webp`, `fish-zero.webp`, `ie-redx.png`, `medal-gold.png`, `medal-silver.png`, `medal-bronze.png`) to the same directory. Do not copy `s-<key>.json`; the new host generates it itself.
-4. Set up the rules file. Copy `.dashboard-rules.json.template` from this directory, fill in its placeholders (`__LAN_NET__`, `__HOME_IP__`, `__EGRESS_NET_1__`, `__EGRESS_NET_2__`, `__TAILSCALE_NET__`), drop the `.template` suffix and place it at `__RULES_PATH__` as `.dashboard-rules.json`. Note: if this file is missing or corrupt, the generator writes an unknown dashboard (the no-fallback rule settled on 2026-11-26), but banning keeps running. So confirm the rules file is in place before verifying.
+4. Set up the rules file. Copy `.dashboard-rules.json.template` from this directory, fill in its placeholders (`__LAN_NET__`, `__EGRESS_NET_1__`, `__EGRESS_NET_2__`, `__MESH_NET_1__`), drop the `.template` suffix and place it at `__RULES_PATH__` as `.dashboard-rules.json`. Note: if this file is missing or corrupt, the generator writes an unknown dashboard (the no-fallback rule settled on 2026-11-26), but banning keeps running. So confirm the rules file is in place before verifying.
 5. State files: there is nothing to copy — the generator rebuilds them (see Section 8).
 6. Include the blocklist in nginx (first block of the template), then `nginx -t` and reload once it passes.
 7. Manually run one full run to verify: `cd __SCRIPT_DIR__ && python3 dashboard-init.py`. Confirm a new `s-<key>.json` is generated in `__DASHBOARD_DIR__`, the dashboard opens with data using the new key's link, and the daily report email arrives.
