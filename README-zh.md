@@ -14,7 +14,6 @@
 
 [https://github.com/sunorz/security-dashboard](https://github.com/sunorz/security-dashboard)
 
-
 ### 新机部署
 
 1. 这个仓库里有什么
@@ -74,7 +73,6 @@ fail2ban 日志（可选）───────────────┘     
 | `__RULES_PATH__` | 判定规则文件 | 必填 | 规则文件的实际路径（建议放 root 家目录或同级位置） |
 | `__BLOCKLIST_CONF__` | nginx 封禁名单（生成器这边看到的） | 必填 | blocklist.conf 的路径；必须和下面 nginx 配置里的 `__BLOCKLIST_PATH__` 是同一个文件 |
 | `__HOST2_JSON_PATH__` | 另一台主机的推送数据 | 可选 | 还监控第二台主机时才填：推送文件在本机的路径，如 `/home/<接收账号>/host-host2.json`。只监控本机时删掉生成器里读它的调用（见第 9 节） |
-| `__DASHBOARD_LINK_PATH__` | 看板地址中转文件 | 可选 | 只有还用 host 2 往别的文件写看板链接时才需要；否则填一个不用的路径或删掉相关调用 |
 | `__PUSH_USER__` | host 1 上接收账号的用户名 | 可选 | host 2 推送数据时用的 SSH 用户（接收账号）。只在多主机推送时需要；只监控一台主机时留着 |
 | `__HOSTSEC_STATE_PATH__` | 主机安全状态 | 必填 | 实际路径（建议跟生成器放一起）；全新部署时会重建（见第 8 节） |
 | `__HOSTSEC_IP_BASELINE_PATH__` | 主机 IP 基线 | 必填 | 同上（全新部署时会重建，见第 8 节） |
@@ -265,7 +263,6 @@ fail2ban 日志（可选）───────────────┘     
 
 **新部署时怎么接。** host 2 上拷 `push-host-data.py.template`，把占位符 （网段占位符和推送占位符 `__PUSH_SSH_KEY__`、`__SSH_PORT__`、 `__HOST2_PUSH_DEST__`）填好，再加上面那行 06:30 的 cron。host 1 上把 `__HOST2_JSON_PATH__` 填成推送文件的路径。只监控一台主机时，推送整个 不用接，把生成器里读 `__HOST2_JSON_PATH__` 的调用（`_read_host2`）删掉， 主机栏就只剩本机。
 
-**看板地址中转（host 1 → host 2）。** 生成器把看板地址写进 `/home/<接收账号>/dashboard-link.txt`（`__DASHBOARD_LINK_PATH__`）， host 2 取去写进 microx 的 install_sh.md 末尾。还用这条线时保留， 不用就删掉相关调用。
 - **host 2 → 看板主机（30 分钟刷新触发）**：host 2 每 30 分钟远程触发 host 1 刷新。新主机上直接用本地 cron 跑 30 分钟刷新（第 5 节第 2 步） 即可，不必再走 host 2 远程触发。
 
 10. 迁移后检查清单

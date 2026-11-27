@@ -73,7 +73,6 @@ Use this table when filling in the templates. Placeholders are grouped by the fi
 | `__RULES_PATH__` | Rules file | Required | Actual path of the rules file (root's home directory or alongside it is fine) |
 | `__BLOCKLIST_CONF__` | nginx blocklist, as the generator sees it | Required | The blocklist.conf path; must be the same file as `__BLOCKLIST_PATH__` in the nginx config below |
 | `__HOST2_JSON_PATH__` | Pushed data from the other host | Optional | Only if you monitor a second host: the path of the pushed file on this host, e.g. `/home/<receiver>/host-host2.json`. If you monitor only this host, remove the `_read_host2` call instead (see Section 9) |
-| `__DASHBOARD_LINK_PATH__` | Dashboard URL relay file | Optional | Only if host 2 still writes the dashboard link into another file; otherwise fill in an unused path or remove the call |
 | `__PUSH_USER__` | Receiving account username on host 1 | Optional | The SSH user host 2 pushes data as (the receiving account). Only needed for multi-host push; leave it if you monitor only one host |
 | `__HOSTSEC_STATE_PATH__` | Host security state | Required | Actual path (keep it next to the generator); rebuilt on a fresh host (see Section 8) |
 | `__HOSTSEC_IP_BASELINE_PATH__` | Host IP baseline | Required | Same as above (rebuilt on a fresh host, see Section 8) |
@@ -264,7 +263,6 @@ The dashboard runs on host 1, but it can also show a second host (host 2). The d
 
 **Setting it up on a new deployment.** On host 2, copy the `push-host-data.py.template`, fill in the placeholders (the network placeholders and the push placeholders `__PUSH_SSH_KEY__`, `__SSH_PORT__`, `__HOST2_PUSH_DEST__`), and add the 06:30 cron line above. On host 1, fill in `__HOST2_JSON_PATH__` with the path of the pushed file. If you only monitor one host, skip the push entirely and remove the `__HOST2_JSON_PATH__` read from the generator (`_read_host2`); the host panel will show only the local host.
 
-**Dashboard URL relay (host 1 → host 2).** The generator writes the dashboard URL into `/home/<receiver>/dashboard-link.txt` (`__DASHBOARD_LINK_PATH__`), which host 2 picks up and appends to the end of microx's install_sh.md. Keep the relay file if you still use this link; otherwise remove the call.
 - **host 2 → dashboard host (30-minute refresh trigger)**: host 2 remotely triggers host 1's refresh every 30 minutes. On the new host, just run the 30-minute refresh from a local cron (Section 5, step 2); no need for the host 2 remote trigger.
 
 10. Post-migration checklist
